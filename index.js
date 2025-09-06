@@ -116,9 +116,14 @@ app.use(express.json());
 app.use(cors());
 
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001'],
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'https://pink-dreams.vercel.app'   // 👈 Add Vercel domain
+    ],
     credentials: true
 }));
+
 
 // JWT Secret - In production, use environment variable
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-here';
