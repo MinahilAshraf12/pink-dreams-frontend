@@ -3,7 +3,7 @@ const { sendOrderConfirmationEmail, sendOrderStatusEmail } = require('./utils/em
 require('dotenv').config();
 const express = require('express');
 const app = express();
-const port = 4000;
+const port = process.env.PORT || 4000;
 const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
@@ -21,6 +21,8 @@ const session = require('express-session');
 const MongoStore = require('connect-mongo');
 const rateLimit = require('express-rate-limit');
 const slowDown = require('express-slow-down');
+
+
 
 
 // 1. FIRST: Configure trust proxy (IMPORTANT for correct IP detection)
