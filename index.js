@@ -113,12 +113,35 @@ const generalLimiter = rateLimit({
 console.log('🛡️ Rate limiting configured and ready to apply to auth routes');
 
 app.use(express.json());
-app.use(cors());
+// Replace your CORS configuration with this
+const corsOptions = {
+    origin: function (origin, callback) {
+        const allowedOrigins = [
+            'http://localhost:3000',
+            'http://localhost:3001',
+            process.env.FRONTEND_URL,
+            // Add your actual frontend domain here
+            'https://e-commere-pink-dreams.vercel.app/'
+        ].filter(Boolean); // Remove undefined values
 
-app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3001'],
-    credentials: true
-}));
+        // Allow requests with no origin (like mobile apps or Postman)
+        if (!origin) return callback(null, true);
+        
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            console.log('Blocked by CORS:', origin);
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
+    exposedHeaders: ['set-cookie']
+};
+
+// Remove the duplicate CORS lines and use only this:
+app.use(cors(corsOptions));
 
 // JWT Secret - In production, use environment variable
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-here';
@@ -328,19 +351,18 @@ console.log('🔵 PayPal integration ready');
 
 // REPLACE YOUR EXISTING /payment/confirm ENDPOINT WITH THIS:
 
-// Confirm Payment
+
+// Update your payment confirmation to use non-blocking email
 app.post('/payment/confirm', async (req, res) => {
     try {
         const { paymentIntentId, orderId } = req.body;
-        console.log('🔄 Processing payment confirmation for order:', orderId);
+        console.log('Processing payment confirmation for order:', orderId);
 
-        // Retrieve payment intent from Stripe
         const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
 
         if (paymentIntent.status === 'succeeded') {
-            console.log('✅ Payment succeeded, updating order...');
+            console.log('Payment succeeded, updating order...');
             
-            // Update order status
             const order = await Order.findOneAndUpdate(
                 { orderId: orderId },
                 { 
@@ -352,15 +374,7 @@ app.post('/payment/confirm', async (req, res) => {
             );
 
             if (order) {
-                console.log('✅ Order updated successfully:', order.orderId);
-                console.log('📧 Order details for email:', {
-                    orderId: order.orderId,
-                    hasShippingAddress: !!order.shippingAddress,
-                    hasEmail: !!(order.shippingAddress?.email || order.billingAddress?.email),
-                    itemCount: order.items?.length || 0
-                });
-
-                // Clear user's cart
+                // Clear cart and update inventory first
                 if (order.userId !== 'guest') {
                     await Cart.findOneAndUpdate(
                         { userId: order.userId },
@@ -380,7 +394,6 @@ app.post('/payment/confirm', async (req, res) => {
                         }
                     );
 
-                    // Create sales record
                     const product = await Product.findOne({ id: item.productId });
                     if (product) {
                         const sale = new Sale({
@@ -398,23 +411,31 @@ app.post('/payment/confirm', async (req, res) => {
                     }
                 }
 
-                console.log(`✅ Payment confirmed for order ${orderId}`);
+                // SEND EMAIL ASYNCHRONOUSLY (non-blocking)
+                // Don't wait for email to complete before responding
+                setImmediate(async () => {
+                    try {
+                        console.log('Attempting to send order confirmation email...');
+                        
+                        if (typeof sendOrderConfirmationEmail === 'function') {
+                            await Promise.race([
+                                sendOrderConfirmationEmail(order),
+                                new Promise((_, reject) => 
+                                    setTimeout(() => reject(new Error('Email timeout')), 20000)
+                                )
+                            ]);
+                            console.log(`Order confirmation email sent successfully for order: ${orderId}`);
+                        } else {
+                            console.log('sendOrderConfirmationEmail function not available');
+                        }
+                    } catch (emailError) {
+                        console.error('Email sending failed (non-blocking):', emailError.message);
+                        // Could store failed email attempts in database for retry later
+                    }
+                });
 
-                // 📧 SEND ORDER CONFIRMATION EMAIL
-                console.log('📧 Attempting to send order confirmation email...');
-                console.log('📧 Email function available:', typeof sendOrderConfirmationEmail);
-                
-                try {
-                    await sendOrderConfirmationEmail(order);
-                    console.log(`✅ Order confirmation email sent successfully for order: ${orderId}`);
-                } catch (emailError) {
-                    console.error('❌ Email sending failed:', emailError);
-                    console.error('❌ Email error details:', emailError.message);
-                    console.error('❌ Email error stack:', emailError.stack);
-                    // Don't fail the entire request if email fails
-                }
-            } else {
-                console.error('❌ Order not found in database:', orderId);
+                // Respond immediately without waiting for email
+                console.log(`Payment confirmed for order ${orderId}`);
             }
 
             res.json({
@@ -423,7 +444,7 @@ app.post('/payment/confirm', async (req, res) => {
                 order: order
             });
         } else {
-            console.log('❌ Payment not succeeded, status:', paymentIntent.status);
+            console.log('Payment not succeeded, status:', paymentIntent.status);
             res.status(400).json({
                 success: false,
                 message: 'Payment not completed',
@@ -432,10 +453,43 @@ app.post('/payment/confirm', async (req, res) => {
         }
 
     } catch (error) {
-        console.error('❌ Payment confirmation error:', error);
+        console.error('Payment confirmation error:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to confirm payment',
+            error: error.message
+        });
+    }
+});
+
+// Add a separate endpoint to retry failed emails
+app.post('/admin/retry-email/:orderId', async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const order = await Order.findOne({ orderId });
+        
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: 'Order not found'
+            });
+        }
+
+        await sendEmailWithTimeout({
+            from: process.env.EMAIL_USER,
+            to: order.shippingAddress?.email,
+            subject: `Order Confirmation - ${orderId}`,
+            html: `<h1>Your order ${orderId} has been confirmed!</h1>`
+        });
+
+        res.json({
+            success: true,
+            message: 'Email sent successfully'
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to send email',
             error: error.message
         });
     }
@@ -786,115 +840,115 @@ app.post('/payment/paypal/capture-order', async (req, res) => {
 });
 
 // STRIPE PAYMENT CONFIRMATION - Debug Version
-app.post('/payment/confirm', async (req, res) => {
-    try {
-        const { paymentIntentId, orderId } = req.body;
-        console.log('🔄 Processing payment confirmation for order:', orderId);
+// app.post('/payment/confirm', async (req, res) => {
+//     try {
+//         const { paymentIntentId, orderId } = req.body;
+//         console.log('🔄 Processing payment confirmation for order:', orderId);
 
-        // Retrieve payment intent from Stripe
-        const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+//         // Retrieve payment intent from Stripe
+//         const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
 
-        if (paymentIntent.status === 'succeeded') {
-            console.log('✅ Payment succeeded, updating order...');
+//         if (paymentIntent.status === 'succeeded') {
+//             console.log('✅ Payment succeeded, updating order...');
             
-            // Update order status
-            const order = await Order.findOneAndUpdate(
-                { orderId: orderId },
-                { 
-                    paymentStatus: 'succeeded',
-                    status: 'processing',
-                    updatedAt: new Date()
-                },
-                { new: true }
-            );
+//             // Update order status
+//             const order = await Order.findOneAndUpdate(
+//                 { orderId: orderId },
+//                 { 
+//                     paymentStatus: 'succeeded',
+//                     status: 'processing',
+//                     updatedAt: new Date()
+//                 },
+//                 { new: true }
+//             );
 
-            if (order) {
-                console.log('✅ Order updated successfully:', order.orderId);
-                console.log('📧 Order details for email:', {
-                    orderId: order.orderId,
-                    hasShippingAddress: !!order.shippingAddress,
-                    hasEmail: !!(order.shippingAddress?.email || order.billingAddress?.email),
-                    itemCount: order.items?.length || 0
-                });
+//             if (order) {
+//                 console.log('✅ Order updated successfully:', order.orderId);
+//                 console.log('📧 Order details for email:', {
+//                     orderId: order.orderId,
+//                     hasShippingAddress: !!order.shippingAddress,
+//                     hasEmail: !!(order.shippingAddress?.email || order.billingAddress?.email),
+//                     itemCount: order.items?.length || 0
+//                 });
 
-                // Clear user's cart
-                if (order.userId !== 'guest') {
-                    await Cart.findOneAndUpdate(
-                        { userId: order.userId },
-                        { items: [], updatedAt: new Date() }
-                    );
-                }
+//                 // Clear user's cart
+//                 if (order.userId !== 'guest') {
+//                     await Cart.findOneAndUpdate(
+//                         { userId: order.userId },
+//                         { items: [], updatedAt: new Date() }
+//                     );
+//                 }
 
-                // Update product stock and sales
-                for (const item of order.items) {
-                    await Product.findOneAndUpdate(
-                        { id: item.productId },
-                        { 
-                            $inc: { 
-                                stock_quantity: -item.quantity,
-                                sales_count: item.quantity
-                            }
-                        }
-                    );
+//                 // Update product stock and sales
+//                 for (const item of order.items) {
+//                     await Product.findOneAndUpdate(
+//                         { id: item.productId },
+//                         { 
+//                             $inc: { 
+//                                 stock_quantity: -item.quantity,
+//                                 sales_count: item.quantity
+//                             }
+//                         }
+//                     );
 
-                    // Create sales record
-                    const product = await Product.findOne({ id: item.productId });
-                    if (product) {
-                        const sale = new Sale({
-                            product_id: item.productId,
-                            product_name: item.name,
-                            category: product.category,
-                            price: item.price,
-                            quantity: item.quantity,
-                            total_amount: item.price * item.quantity,
-                            date: new Date(),
-                            month: new Date().getMonth() + 1,
-                            year: new Date().getFullYear()
-                        });
-                        await sale.save();
-                    }
-                }
+//                     // Create sales record
+//                     const product = await Product.findOne({ id: item.productId });
+//                     if (product) {
+//                         const sale = new Sale({
+//                             product_id: item.productId,
+//                             product_name: item.name,
+//                             category: product.category,
+//                             price: item.price,
+//                             quantity: item.quantity,
+//                             total_amount: item.price * item.quantity,
+//                             date: new Date(),
+//                             month: new Date().getMonth() + 1,
+//                             year: new Date().getFullYear()
+//                         });
+//                         await sale.save();
+//                     }
+//                 }
 
-                console.log(`✅ Payment confirmed for order ${orderId}`);
+//                 console.log(`✅ Payment confirmed for order ${orderId}`);
 
-                // 📧 SEND ORDER CONFIRMATION EMAIL
-                console.log('📧 Attempting to send order confirmation email...');
-                try {
-                    await sendOrderConfirmationEmail(order);
-                    console.log(`✅ Order confirmation email sent successfully for order: ${orderId}`);
-                } catch (emailError) {
-                    console.error('❌ Email sending failed:', emailError);
-                    console.error('❌ Email error details:', emailError.message);
-                    console.error('❌ Email error stack:', emailError.stack);
-                    // Don't fail the entire request if email fails
-                }
-            } else {
-                console.error('❌ Order not found in database:', orderId);
-            }
+//                 // 📧 SEND ORDER CONFIRMATION EMAIL
+//                 console.log('📧 Attempting to send order confirmation email...');
+//                 try {
+//                     await sendOrderConfirmationEmail(order);
+//                     console.log(`✅ Order confirmation email sent successfully for order: ${orderId}`);
+//                 } catch (emailError) {
+//                     console.error('❌ Email sending failed:', emailError);
+//                     console.error('❌ Email error details:', emailError.message);
+//                     console.error('❌ Email error stack:', emailError.stack);
+//                     // Don't fail the entire request if email fails
+//                 }
+//             } else {
+//                 console.error('❌ Order not found in database:', orderId);
+//             }
 
-            res.json({
-                success: true,
-                message: 'Payment confirmed successfully',
-                order: order
-            });
-        } else {
-            console.log('❌ Payment not succeeded, status:', paymentIntent.status);
-            res.status(400).json({
-                success: false,
-                message: 'Payment not completed',
-                status: paymentIntent.status
-            });
-        }
+//             res.json({
+//                 success: true,
+//                 message: 'Payment confirmed successfully',
+//                 order: order
+//             });
+//         } else {
+//             console.log('❌ Payment not succeeded, status:', paymentIntent.status);
+//             res.status(400).json({
+//                 success: false,
+//                 message: 'Payment not completed',
+//                 status: paymentIntent.status
+//             });
+//         }
 
-    } catch (error) {
-        console.error('❌ Payment confirmation error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to confirm payment',
-            error: error.message
-        });
-    }
-});
+//     } catch (error) {
+//         console.error('❌ Payment confirmation error:', error);
+//         res.status(500).json({
+//             success: false,
+//             message: 'Failed to confirm payment',
+//             error: error.message
+//         });
+//     }
+// });
 
 // Test endpoint to verify PayPal connection
 app.get('/payment/paypal/test', async (req, res) => {
@@ -5138,7 +5192,7 @@ const Contact = mongoose.model("Contact", {
 });
 
 const createTransport = () => {
-    return nodemailer.createTransport({
+    const config = {
         service: 'gmail',
         host: 'smtp.gmail.com',
         port: 587,
@@ -5150,13 +5204,34 @@ const createTransport = () => {
         tls: {
             rejectUnauthorized: false
         },
-        connectionTimeout: 60000,
-        greetingTimeout: 30000,
-        socketTimeout: 60000,
-        pool: true
+        // Reduced timeouts for production
+        connectionTimeout: 30000,  // 30 seconds
+        greetingTimeout: 15000,    // 15 seconds  
+        socketTimeout: 30000,      // 30 seconds
+        pool: true,
+        maxConnections: 5,
+        maxMessages: 10
+    };
+
+    return nodemailer.createTransport(config);
+};
+const sendEmailWithTimeout = async (mailOptions, timeoutMs = 25000) => {
+    return new Promise(async (resolve, reject) => {
+        const timeout = setTimeout(() => {
+            reject(new Error('Email sending timeout'));
+        }, timeoutMs);
+
+        try {
+            const transporter = createTransporter();
+            const result = await transporter.sendMail(mailOptions);
+            clearTimeout(timeout);
+            resolve(result);
+        } catch (error) {
+            clearTimeout(timeout);
+            reject(error);
+        }
     });
 };
-
 // Middleware to get client IP
 const getClientIP = (req) => {
     return req.headers['x-forwarded-for'] || 
@@ -6902,7 +6977,139 @@ console.log('   DELETE /admin/orders/:orderId - Delete order');
 // END OF ADMIN ORDERS API INTEGRATION
 // =============================================
 
+// Add these endpoints to help debug Railway deployment issues
 
+// Health check endpoint for Railway
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || 'development',
+        baseUrl: process.env.BASE_URL,
+        port: process.env.PORT || 4000
+    });
+});
+
+// Debug endpoint to check environment variables (remove in production)
+app.get('/debug/env', (req, res) => {
+    const safeEnvVars = {
+        NODE_ENV: process.env.NODE_ENV,
+        PORT: process.env.PORT,
+        BASE_URL: process.env.BASE_URL,
+        FRONTEND_URL: process.env.FRONTEND_URL,
+        HAS_EMAIL_USER: !!process.env.EMAIL_USER,
+        HAS_EMAIL_PASSWORD: !!process.env.EMAIL_APP_PASSWORD,
+        HAS_STRIPE_KEY: !!process.env.STRIPE_SECRET_KEY,
+        HAS_PAYPAL_CLIENT_ID: !!process.env.PAYPAL_CLIENT_ID,
+        HAS_MONGODB_URI: !!process.env.MONGODB_URI,
+        HAS_JWT_SECRET: !!process.env.JWT_SECRET
+    };
+    
+    res.json({
+        success: true,
+        environment: safeEnvVars,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Test email endpoint
+app.post('/test/email', async (req, res) => {
+    try {
+        const { to = 'test@example.com', subject = 'Test Email' } = req.body;
+        
+        console.log('Testing email configuration...');
+        console.log('EMAIL_USER:', process.env.EMAIL_USER ? 'Set' : 'Not set');
+        console.log('EMAIL_APP_PASSWORD:', process.env.EMAIL_APP_PASSWORD ? 'Set' : 'Not set');
+        
+        const transporter = createTransporter();
+        
+        // Test connection
+        await transporter.verify();
+        console.log('SMTP connection verified successfully');
+        
+        // Send test email
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: to,
+            subject: subject,
+            html: '<h1>Test Email from Railway</h1><p>Email configuration is working!</p>'
+        };
+        
+        const result = await transporter.sendMail(mailOptions);
+        
+        res.json({
+            success: true,
+            message: 'Email sent successfully',
+            messageId: result.messageId
+        });
+        
+    } catch (error) {
+        console.error('Email test failed:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Email test failed',
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+    }
+});
+
+// Database connection test
+app.get('/test/database', async (req, res) => {
+    try {
+        const dbState = mongoose.connection.readyState;
+        const states = {
+            0: 'disconnected',
+            1: 'connected',
+            2: 'connecting',
+            3: 'disconnecting'
+        };
+        
+        // Test database operation
+        const productCount = await Product.countDocuments();
+        const orderCount = await Order.countDocuments();
+        
+        res.json({
+            success: true,
+            database: {
+                state: states[dbState],
+                connected: dbState === 1,
+                productCount,
+                orderCount
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Database test failed',
+            error: error.message
+        });
+    }
+});
+
+// Improved error handling middleware
+app.use((error, req, res, next) => {
+    console.error('Unhandled error:', error);
+    
+    // Don't expose error details in production
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+    
+    res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+        error: isDevelopment ? error.message : 'Something went wrong',
+        stack: isDevelopment ? error.stack : undefined
+    });
+});
+
+// Handle 404s
+app.use('*', (req, res) => {
+    res.status(404).json({
+        success: false,
+        message: 'Endpoint not found',
+        path: req.originalUrl
+    });
+});
 
 
 
