@@ -7,7 +7,7 @@ const createTransporter = () => {
     // Check for Resend API key first (recommended)
     if (process.env.RESEND_API_KEY) {
         console.log('📧 Using Resend for email delivery');
-        return nodemailer.createTransporter({
+        return nodemailer.createTransport({
             host: 'smtp.resend.com',
             port: 587,
             secure: false, // Use TLS
@@ -24,7 +24,7 @@ const createTransporter = () => {
     // Fallback to SendGrid if configured
     if (process.env.SENDGRID_API_KEY) {
         console.log('📧 Using SendGrid for email delivery');
-        return nodemailer.createTransporter({
+        return nodemailer.createTransport({
             host: 'smtp.sendgrid.net',
             port: 587,
             secure: false,
@@ -39,7 +39,7 @@ const createTransporter = () => {
     console.warn('⚠️ No production email service configured. Using Gmail SMTP - this will fail in production.');
     console.warn('⚠️ Add RESEND_API_KEY environment variable for production email delivery.');
     
-    return nodemailer.createTransporter({
+    return nodemailer.createTransport({
         service: 'gmail',
         host: 'smtp.gmail.com',
         port: 587,
