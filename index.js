@@ -5222,7 +5222,7 @@ const sendEmailWithTimeout = async (mailOptions, timeoutMs = 25000) => {
         }, timeoutMs);
 
         try {
-            const transporter = createTransporter();
+            const transporter = createTransport();
             const result = await transporter.sendMail(mailOptions);
             clearTimeout(timeout);
             resolve(result);
@@ -5243,7 +5243,7 @@ app.post('/test/email', async (req, res) => {
         console.log('EMAIL_USER:', process.env.EMAIL_USER ? 'Set' : 'Not set');
         console.log('EMAIL_APP_PASSWORD:', process.env.EMAIL_APP_PASSWORD ? 'Set' : 'Not set');
         
-        const transporter = createTransporter();
+        const transporter = createTransport();
         
         // Test connection
         await transporter.verify();
