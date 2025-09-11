@@ -4,11 +4,11 @@ const nodemailer = require('nodemailer');
 require('dotenv').config();
 
 // Multiple email service configurations for production
-const createTransporter = () => {
+const createTransport = () => {
     // Check which email service is configured
     if (process.env.SENDGRID_API_KEY) {
         // SendGrid SMTP (Recommended for production)
-        return nodemailer.createTransporter({
+        return nodemailer.createTransport({
             host: 'smtp.sendgrid.net',
             port: 587,
             secure: false,
@@ -24,7 +24,7 @@ const createTransporter = () => {
     
     if (process.env.RESEND_API_KEY) {
         // Resend SMTP (Modern alternative)
-        return nodemailer.createTransporter({
+        return nodemailer.createTransport({
             host: 'smtp.resend.com',
             port: 587,
             secure: false,
@@ -37,7 +37,7 @@ const createTransporter = () => {
     
     if (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN) {
         // Mailgun SMTP
-        return nodemailer.createTransporter({
+        return nodemailer.createTransport({
             host: 'smtp.mailgun.org',
             port: 587,
             secure: false,
@@ -50,7 +50,7 @@ const createTransporter = () => {
     
     if (process.env.SMTP2GO_API_KEY) {
         // SMTP2GO (Great free tier)
-        return nodemailer.createTransporter({
+        return nodemailer.createTransport({
             host: 'mail.smtp2go.com',
             port: 587,
             secure: false,
@@ -63,7 +63,7 @@ const createTransporter = () => {
     
     // Fallback to Gmail (will fail in production)
     console.warn('⚠️ Using Gmail SMTP - this may fail in production. Consider using SendGrid or Resend.');
-    return nodemailer.createTransporter({
+    return nodemailer.createTransport({
         service: 'gmail',
         host: 'smtp.gmail.com',
         port: 587,
@@ -87,7 +87,7 @@ const sendEmailWithRetry = async (mailOptions, maxRetries = 2) => {
         try {
             console.log(`📧 Email attempt ${attempt}/${maxRetries}`);
             
-            const transporter = createTransporter();
+            const transporter = createTransport();
             
             // Set a timeout for the entire send operation
             const sendPromise = transporter.sendMail(mailOptions);
@@ -250,5 +250,5 @@ module.exports = {
     sendOrderConfirmationEmail,
     sendOrderStatusEmail,
     sendTestEmail,
-    createTransporter
+    createTransport
 };
