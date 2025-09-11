@@ -5232,6 +5232,50 @@ const sendEmailWithTimeout = async (mailOptions, timeoutMs = 25000) => {
         }
     });
 };
+
+
+// Test email endpoint
+app.post('/test/email', async (req, res) => {
+    try {
+        const { to = 'test@example.com', subject = 'Test Email' } = req.body;
+        
+        console.log('Testing email configuration...');
+        console.log('EMAIL_USER:', process.env.EMAIL_USER ? 'Set' : 'Not set');
+        console.log('EMAIL_APP_PASSWORD:', process.env.EMAIL_APP_PASSWORD ? 'Set' : 'Not set');
+        
+        const transporter = createTransporter();
+        
+        // Test connection
+        await transporter.verify();
+        console.log('SMTP connection verified successfully');
+        
+        // Send test email
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: to,
+            subject: subject,
+            html: '<h1>Test Email from Railway</h1><p>Email configuration is working!</p>'
+        };
+        
+        const result = await transporter.sendMail(mailOptions);
+        
+        res.json({
+            success: true,
+            message: 'Email sent successfully',
+            messageId: result.messageId
+        });
+        
+    } catch (error) {
+        console.error('Email test failed:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Email test failed',
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+    }
+});
+
 // Middleware to get client IP
 const getClientIP = (req) => {
     return req.headers['x-forwarded-for'] || 
