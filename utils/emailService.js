@@ -7,7 +7,7 @@ const createTransporter = () => {
     // Check for Resend API key first (recommended)
     if (process.env.RESEND_API_KEY) {
         console.log('📧 Using Resend for email delivery');
-        return nodemailer.createTransport({
+        return nodemailer.createTransporter({
             host: 'smtp.resend.com',
             port: 587,
             secure: false, // Use TLS
@@ -24,7 +24,7 @@ const createTransporter = () => {
     // Fallback to SendGrid if configured
     if (process.env.SENDGRID_API_KEY) {
         console.log('📧 Using SendGrid for email delivery');
-        return nodemailer.createTransport({
+        return nodemailer.createTransporter({
             host: 'smtp.sendgrid.net',
             port: 587,
             secure: false,
@@ -60,8 +60,6 @@ const sendEmailWithRetry = async (mailOptions, maxRetries = 2) => {
         try {
             console.log(`📧 Email attempt ${attempt}/${maxRetries} to ${mailOptions.to}`);
             
-            const transporter = createTransporter();
-            
             // Validate required fields
             if (!mailOptions.from) {
                 mailOptions.from = `"Pink Dreams Store" <${process.env.EMAIL_FROM || 'noreply@resend.dev'}>`;
@@ -71,13 +69,24 @@ const sendEmailWithRetry = async (mailOptions, maxRetries = 2) => {
                 throw new Error('No recipient email address provided');
             }
             
-            // Set timeout for email sending
-            const sendPromise = transporter.sendMail(mailOptions);
-            const timeoutPromise = new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('Email sending timeout after 15 seconds')), 15000)
-            );
+            let result;
             
-            const result = await Promise.race([sendPromise, timeoutPromise]);
+            // Use Resend HTTP API if available
+            if (process.env.RESEND_API_KEY) {
+                console.log('Using Resend HTTP API');
+                result = await sendWithResendAPI(mailOptions);
+            } else {
+                // Fall back to SMTP
+                const transporter = createTransporter();
+                
+                // Set timeout for email sending
+                const sendPromise = transporter.sendMail(mailOptions);
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Email sending timeout after 15 seconds')), 15000)
+                );
+                
+                result = await Promise.race([sendPromise, timeoutPromise]);
+            }
             
             console.log(`✅ Email sent successfully to ${mailOptions.to} on attempt ${attempt}`);
             console.log(`📧 Message ID: ${result.messageId}`);
