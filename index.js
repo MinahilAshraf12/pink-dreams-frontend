@@ -1312,7 +1312,19 @@ const User = mongoose.model("User", {
         default: 'local'
     },
 });
+// Add this before your existing static middleware
+app.use('/images', (req, res, next) => {
+    console.log('Image request:', req.url);
+    next();
+}, express.static(path.join(__dirname, 'upload/images')));
 
+// Also ensure the upload directory exists
+const fs = require('fs');
+const uploadDir = path.join(__dirname, 'upload/images');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+    console.log('Created upload directory:', uploadDir);
+}
 // Middleware to verify JWT token
 const verifyToken = (req, res, next) => {
     const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -2191,11 +2203,96 @@ const upload = multer({ storage: storage })
 app.use('/images', express.static('upload/images'));
 
 app.post("/upload", upload.single('product'), (req, res) => {
-  const baseUrl = `${req.protocol}://${req.get('host')}`;
-  res.json({
-    success: 1,
-    image_url: `${baseUrl}/images/${req.file.filename}`
-  });
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: 0,
+                message: 'No file uploaded'
+            });
+        }
+
+        // Use environment variable for base URL
+        const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+        const imageUrl = `${baseUrl}/images/${req.file.filename}`;
+        
+        console.log('Image uploaded:', {
+            filename: req.file.filename,
+            path: req.file.path,
+            url: imageUrl
+        });
+
+        res.json({
+            success: 1,
+            image_url: imageUrl
+        });
+    } catch (error) {
+        console.error('Upload error:', error);
+        res.status(500).json({
+            success: 0,
+            message: 'Upload failed'
+        });
+    }
+});
+// Add this endpoint to fix existing product images
+app.post('/fix-image-urls', async (req, res) => {
+    try {
+        const baseUrl = process.env.BASE_URL || 'https://your-railway-app.railway.app';
+        
+        // Update all products with localhost URLs
+        const result = await Product.updateMany(
+            { 
+                image: { $regex: 'localhost:4000' }
+            },
+            [{
+                $set: {
+                    image: {
+                        $replaceOne: {
+                            input: "$image",
+                            find: "http://localhost:4000",
+                            replacement: baseUrl
+                        }
+                    }
+                }
+            }]
+        );
+
+        // Also update images array if you have multiple images
+        const result2 = await Product.updateMany(
+            { 
+                images: { $elemMatch: { $regex: 'localhost:4000' } }
+            },
+            [{
+                $set: {
+                    images: {
+                        $map: {
+                            input: "$images",
+                            as: "img",
+                            in: {
+                                $replaceOne: {
+                                    input: "$$img",
+                                    find: "http://localhost:4000",
+                                    replacement: baseUrl
+                                }
+                            }
+                        }
+                    }
+                }
+            }]
+        );
+
+        res.json({
+            success: true,
+            message: `Updated ${result.modifiedCount} products and ${result2.modifiedCount} image arrays`,
+            baseUrl: baseUrl
+        });
+
+    } catch (error) {
+        console.error('Error fixing image URLs:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
 });
 // Enhanced Schema for creating products with all e-commerce features
 const productSchema = new mongoose.Schema({
