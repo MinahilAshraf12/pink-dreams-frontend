@@ -5040,28 +5040,23 @@ const Contact = mongoose.model("Contact", {
     }
 });
 
-// Email configuration
-const createTransport = () => {
-    // For Gmail (recommended for testing)
-    if (process.env.EMAIL_SERVICE === 'gmail') {
-        return nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.EMAIL_USER, // your-email@gmail.com
-                pass: process.env.EMAIL_APP_PASSWORD // Gmail App Password
-            }
-        });
-    }
-    
-    // For other email services or SMTP
-    return nodemailer.createTransport({
-        host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-        port: process.env.EMAIL_PORT || 587,
-        secure: false, // true for 465, false for other ports
+const createTransporter = () => {
+    return nodemailer.createTransporter({
+        service: 'gmail',
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false,
         auth: {
             user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASSWORD
-        }
+            pass: process.env.EMAIL_APP_PASSWORD
+        },
+        tls: {
+            rejectUnauthorized: false
+        },
+        connectionTimeout: 60000,
+        greetingTimeout: 30000,
+        socketTimeout: 60000,
+        pool: true
     });
 };
 
