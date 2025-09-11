@@ -1,6 +1,6 @@
 // Add this import at the top of your index.js
-const { sendOrderConfirmationEmail, sendOrderStatusEmail } = require('./utils/emailService');
-require('dotenv').config();
+// At the top of index.js - REPLACE your existing email import
+const { sendOrderConfirmationEmail, sendOrderStatusEmail, sendTestEmail } = require('./utils/emailService');
 const express = require('express');
 const app = express();
 const port = 4000 ;
@@ -5234,35 +5234,20 @@ const sendEmailWithTimeout = async (mailOptions, timeoutMs = 25000) => {
 };
 
 
-// Test email endpoint
+// UPDATE your existing /test/email endpoint
 app.post('/test/email', async (req, res) => {
     try {
-        const { to = 'test@example.com', subject = 'Test Email' } = req.body;
+        const { to = 'test@example.com', subject = 'Test Email from Railway' } = req.body;
         
-        console.log('Testing email configuration...');
-        console.log('EMAIL_USER:', process.env.EMAIL_USER ? 'Set' : 'Not set');
-        console.log('EMAIL_APP_PASSWORD:', process.env.EMAIL_APP_PASSWORD ? 'Set' : 'Not set');
+        console.log('Testing email with production service...');
         
-        const transporter = createTransport();
-        
-        // Test connection
-        await transporter.verify();
-        console.log('SMTP connection verified successfully');
-        
-        // Send test email
-        const mailOptions = {
-            from: process.env.EMAIL_USER,
-            to: to,
-            subject: subject,
-            html: '<h1>Test Email from Railway</h1><p>Email configuration is working!</p>'
-        };
-        
-        const result = await transporter.sendMail(mailOptions);
+        const result = await sendTestEmail(to, subject);
         
         res.json({
             success: true,
-            message: 'Email sent successfully',
-            messageId: result.messageId
+            message: 'Email sent successfully from Railway!',
+            messageId: result.messageId,
+            service: 'Production Email Service'
         });
         
     } catch (error) {
@@ -5270,8 +5255,7 @@ app.post('/test/email', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Email test failed',
-            error: error.message,
-            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+            error: error.message
         });
     }
 });
