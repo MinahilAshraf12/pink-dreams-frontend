@@ -1,5 +1,3 @@
-// Add this import at the top of your index.js
-// At the top of index.js - REPLACE your existing email import
 const { sendOrderConfirmationEmail, sendOrderStatusEmail, sendTestEmail } = require('./utils/emailService');
 const express = require('express');
 const app = express();
@@ -5191,71 +5189,36 @@ const Contact = mongoose.model("Contact", {
     }
 });
 
-const createTransport = () => {
-    const config = {
-        service: 'gmail',
-        host: 'smtp.gmail.com',
-        port: 587,
-        secure: false,
-        auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_APP_PASSWORD
-        },
-        tls: {
-            rejectUnauthorized: false
-        },
-        // Reduced timeouts for production
-        connectionTimeout: 30000,  // 30 seconds
-        greetingTimeout: 15000,    // 15 seconds  
-        socketTimeout: 30000,      // 30 seconds
-        pool: true,
-        maxConnections: 5,
-        maxMessages: 10
-    };
-
-    return nodemailer.createTransport(config);
-};
-const sendEmailWithTimeout = async (mailOptions, timeoutMs = 25000) => {
-    return new Promise(async (resolve, reject) => {
-        const timeout = setTimeout(() => {
-            reject(new Error('Email sending timeout'));
-        }, timeoutMs);
-
-        try {
-            const transporter = createTransport();
-            const result = await transporter.sendMail(mailOptions);
-            clearTimeout(timeout);
-            resolve(result);
-        } catch (error) {
-            clearTimeout(timeout);
-            reject(error);
-        }
-    });
-};
 
 
-// UPDATE your existing /test/email endpoint
+// Replace your existing /test/email endpoint with this enhanced version
 app.post('/test/email', async (req, res) => {
     try {
-        const { to = 'test@example.com', subject = 'Test Email from Railway' } = req.body;
+        const { to = 'test@example.com', subject = 'Test Email from Pink Dreams Railway' } = req.body;
         
-        console.log('Testing email with production service...');
+        console.log('🧪 Testing email service configuration...');
+        console.log('📧 RESEND_API_KEY:', process.env.RESEND_API_KEY ? 'Configured ✅' : 'Missing ❌');
+        console.log('📧 EMAIL_FROM:', process.env.EMAIL_FROM || 'Using default');
         
         const result = await sendTestEmail(to, subject);
         
         res.json({
             success: true,
-            message: 'Email sent successfully from Railway!',
+            message: 'Email sent successfully from Railway using Resend!',
             messageId: result.messageId,
-            service: 'Production Email Service'
+            service: 'Resend',
+            from: process.env.EMAIL_FROM || 'noreply@resend.dev',
+            to: to,
+            timestamp: new Date().toISOString()
         });
         
     } catch (error) {
-        console.error('Email test failed:', error);
+        console.error('❌ Email test failed:', error);
         res.status(500).json({
             success: false,
             message: 'Email test failed',
-            error: error.message
+            error: error.message,
+            service: process.env.RESEND_API_KEY ? 'Resend (configured)' : 'Gmail (fallback - will fail)'
         });
     }
 });
