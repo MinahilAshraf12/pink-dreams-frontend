@@ -1,30 +1,39 @@
-// utils/emailService.js - Complete Resend Integration
+// utils/emailService.js - Complete Resend Integration with HTTP API
 const nodemailer = require('nodemailer');
 require('dotenv').config();
 
-// Create email transporter with Resend priority
-const createTransporter = () => {
-    // Check for Resend API key first (recommended)
-    if (process.env.RESEND_API_KEY) {
-        console.log('📧 Using Resend for email delivery');
-        return nodemailer.createTransporter({
-            host: 'smtp.resend.com',
-            port: 587,
-            secure: false, // Use TLS
-            auth: {
-                user: 'resend',
-                pass: process.env.RESEND_API_KEY
-            },
-            tls: {
-                rejectUnauthorized: false
-            }
-        });
+// Send email using Resend HTTP API
+const sendWithResendAPI = async (mailOptions) => {
+    const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            from: mailOptions.from,
+            to: mailOptions.to,
+            subject: mailOptions.subject,
+            html: mailOptions.html,
+            text: mailOptions.text
+        })
+    });
+
+    if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`Resend API error: ${response.status} - ${error}`);
     }
-    
+
+    const result = await response.json();
+    return { messageId: result.id };
+};
+
+// Create email transporter with fallback to SMTP
+const createTransporter = () => {
     // Fallback to SendGrid if configured
     if (process.env.SENDGRID_API_KEY) {
         console.log('📧 Using SendGrid for email delivery');
-        return nodemailer.createTransporter({
+        return nodemailer.createTransport({
             host: 'smtp.sendgrid.net',
             port: 587,
             secure: false,
@@ -73,10 +82,11 @@ const sendEmailWithRetry = async (mailOptions, maxRetries = 2) => {
             
             // Use Resend HTTP API if available
             if (process.env.RESEND_API_KEY) {
-                console.log('Using Resend HTTP API');
+                console.log('📧 Using Resend HTTP API for email delivery');
                 result = await sendWithResendAPI(mailOptions);
             } else {
                 // Fall back to SMTP
+                console.log('📧 Using SMTP fallback for email delivery');
                 const transporter = createTransporter();
                 
                 // Set timeout for email sending
@@ -212,19 +222,6 @@ const sendOrderConfirmationEmail = async (order) => {
                                     </tr>
                                 </table>
                             </div>
-
-                            <!-- Shipping Address -->
-                            ${order.shippingAddress ? `
-                            <div style="margin-top: 25px; padding: 20px; background: #f9fafb; border-radius: 8px;">
-                                <h3 style="color: #374151; margin: 0 0 15px 0; font-size: 16px;">Shipping Address</h3>
-                                <div style="color: #6b7280; line-height: 1.5;">
-                                    ${order.shippingAddress.name || ''}<br>
-                                    ${order.shippingAddress.address || ''}<br>
-                                    ${order.shippingAddress.city || ''}, ${order.shippingAddress.state || ''} ${order.shippingAddress.zipCode || ''}<br>
-                                    ${order.shippingAddress.country || ''}
-                                </div>
-                            </div>
-                            ` : ''}
 
                             <!-- Next Steps -->
                             <div style="margin-top: 25px; padding: 20px; background: #ecfdf5; border-radius: 8px; border-left: 4px solid #10b981;">
@@ -400,12 +397,12 @@ const sendTestEmail = async (to, subject = 'Test Email from Pink Dreams') => {
                     </div>
                     <div style="padding: 30px; text-align: center;">
                         <p style="color: #374151; font-size: 16px; margin: 0 0 15px 0;">
-                            This test email was sent successfully from your Railway production server using Resend!
+                            This test email was sent successfully from your Railway production server using Resend HTTP API!
                         </p>
                         <div style="background: #ecfdf5; padding: 15px; border-radius: 8px; margin: 20px 0;">
                             <p style="color: #065f46; margin: 0; font-size: 14px;">
                                 ✅ Email Service: Active<br>
-                                📧 Provider: Resend<br>
+                                📧 Provider: Resend (HTTP API)<br>
                                 🚀 Environment: Production<br>
                                 🕒 Sent: ${new Date().toLocaleString()}
                             </p>
@@ -421,11 +418,11 @@ const sendTestEmail = async (to, subject = 'Test Email from Pink Dreams') => {
         text: `
 🎉 Email Service Test - Success!
 
-This test email was sent successfully from your Railway production server using Resend.
+This test email was sent successfully from your Railway production server using Resend HTTP API.
 
 ✅ Email Service: Active
-📧 Provider: Resend  
-🚀 Environment: Production
+📧 Provider: Resend (HTTP API)
+🚀 Environment: Production  
 🕒 Sent: ${new Date().toLocaleString()}
 
 Your Pink Dreams store is ready to send order confirmations!
