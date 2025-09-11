@@ -120,8 +120,6 @@ const corsOptions = {
         const allowedOrigins = [
             'http://localhost:3000',
             'http://localhost:3001',
-            'https://e-commere-frontend-7wsm-5qtohyuon-minahilashraf12s-projects.vercel.app',
-            'https://e-commere-frontend-7wsm.vercel.app',
             'https://e-commere-pink-dreams.vercel.app',
             // Add your main production domain
             process.env.FRONTEND_URL,
