@@ -5040,8 +5040,9 @@ const Contact = mongoose.model("Contact", {
     }
 });
 
-const createTransporter = () => {
-    return nodemailer.createTransporter({
+// Email configuration
+const createTransport = () => {
+    return nodemailer.createTransport({
         service: 'gmail',
         host: 'smtp.gmail.com',
         port: 587,
