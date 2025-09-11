@@ -112,31 +112,84 @@ console.log('🛡️ Rate limiting configured and ready to apply to auth routes'
 
 app.use(express.json());
 // Replace your CORS configuration with this
+// Replace your existing CORS configuration with this fixed version
+
 const corsOptions = {
     origin: function (origin, callback) {
+        // Add all your frontend URLs here
         const allowedOrigins = [
             'http://localhost:3000',
             'http://localhost:3001',
+            'https://e-commere-frontend-7wsm-5qtohyuon-minahilashraf12s-projects.vercel.app',
+            'https://e-commere-frontend-7wsm.vercel.app',
+            'https://e-commere-pink-dreams.vercel.app',
+            // Add your main production domain
             process.env.FRONTEND_URL,
-            // Add your actual frontend domain here
-            'https://e-commere-pink-dreams.vercel.app/'
+            // Add any other domains you're using
         ].filter(Boolean); // Remove undefined values
 
-        // Allow requests with no origin (like mobile apps or Postman)
-        if (!origin) return callback(null, true);
+        console.log('🌐 CORS Check - Origin:', origin);
+        console.log('🌐 Allowed Origins:', allowedOrigins);
+
+        // Allow requests with no origin (mobile apps, Postman, same-origin requests)
+        if (!origin) {
+            console.log('✅ No origin - allowing request');
+            return callback(null, true);
+        }
         
-        if (allowedOrigins.indexOf(origin) !== -1) {
+        if (allowedOrigins.includes(origin)) {
+            console.log('✅ Origin allowed:', origin);
             callback(null, true);
         } else {
-            console.log('Blocked by CORS:', origin);
-            callback(new Error('Not allowed by CORS'));
+            console.log('❌ Blocked by CORS:', origin);
+            // For debugging, let's be more permissive in development
+            if (process.env.NODE_ENV === 'development' || origin.includes('vercel.app')) {
+                console.log('🔓 Development mode - allowing anyway');
+                callback(null, true);
+            } else {
+                callback(new Error('Not allowed by CORS'));
+            }
         }
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
-    exposedHeaders: ['set-cookie']
+    allowedHeaders: [
+        'Content-Type', 
+        'Authorization', 
+        'x-csrf-token',
+        'X-Requested-With',
+        'Accept',
+        'Accept-Version',
+        'Content-Length',
+        'Content-MD5',
+        'Date',
+        'X-Api-Version'
+    ],
+    exposedHeaders: ['set-cookie'],
+    // Handle preflight requests
+    optionsSuccessStatus: 200,
+    // Allow preflight to be cached
+    maxAge: 86400 // 24 hours
 };
+
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+// Additional middleware for handling preflight requests
+app.options('*', cors(corsOptions));
+
+// Add a middleware to log all CORS-related headers for debugging
+app.use((req, res, next) => {
+    if (req.method === 'OPTIONS') {
+        console.log('🔍 Preflight request from:', req.headers.origin);
+        console.log('🔍 Requested method:', req.headers['access-control-request-method']);
+        console.log('🔍 Requested headers:', req.headers['access-control-request-headers']);
+    }
+    next();
+});
+
+console.log('🌐 CORS configuration updated with enhanced debugging');
+console.log('🌐 Environment:', process.env.NODE_ENV || 'development');
 
 // Remove the duplicate CORS lines and use only this:
 app.use(cors(corsOptions));
