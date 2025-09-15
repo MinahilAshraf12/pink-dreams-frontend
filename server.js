@@ -20,7 +20,7 @@ mongoose.connect(process.env.MONGODB_URI)
 .then(() => console.log("✅ MongoDB Connected"))
 .catch((err) => console.error("❌ MongoDB connection error:", err));
 
-// Enhanced CORS Configuration
+// Enhanced CORS Configuration - Updated for your domains
 const corsOptions = {
     origin: function (origin, callback) {
         const allowedOrigins = [
@@ -29,18 +29,17 @@ const corsOptions = {
             'https://localhost:3000',
             'https://localhost:3001',
             process.env.FRONTEND_URL,
-            'https://e-commere-pink-dreams.vercel.app',
+            'https://e-commere-pink-dreams.vercel.app', // Your actual Vercel domain
             'https://pink-dreams-frontend-production.up.railway.app',
-            // Add your actual frontend domain
-            /\.railway\.app$/,
-            /\.vercel\.app$/,
-            /\.netlify\.app$/
+            // Add any other subdomains you might have
+            'https://e-commere-pink-dreams-git-main.vercel.app',
+            'https://e-commere-pink-dreams-preview.vercel.app'
         ].filter(Boolean);
 
         // Allow requests with no origin (mobile apps, Postman, etc.)
         if (!origin) return callback(null, true);
         
-        // Check if origin matches allowed origins or patterns
+        // Check if origin matches allowed origins
         const isAllowed = allowedOrigins.some(allowedOrigin => {
             if (typeof allowedOrigin === 'string') {
                 return origin === allowedOrigin;
@@ -50,7 +49,11 @@ const corsOptions = {
             return false;
         });
         
-        if (isAllowed) {
+        // Also allow all Vercel and Railway subdomains
+        const isVercelDomain = origin && origin.includes('vercel.app');
+        const isRailwayDomain = origin && origin.includes('railway.app');
+        
+        if (isAllowed || isVercelDomain || isRailwayDomain) {
             callback(null, true);
         } else {
             console.log('🚫 Blocked by CORS:', origin);
