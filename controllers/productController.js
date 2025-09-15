@@ -1,11 +1,21 @@
-// controllers/productController.js - Fixed Product Controller with Input Validation
+// controllers/productController.js - Fixed version with flexible ID handling
 const Product = require('../models/Product');
-const { Sale } = require('../models');
+const mongoose = require('mongoose');
 
-// Helper function to validate product ID
+// Helper function to validate product ID (supports both numeric and ObjectId)
 const validateProductId = (id) => {
+    // Check if it's a valid MongoDB ObjectId
+    if (mongoose.Types.ObjectId.isValid(id)) {
+        return { isValid: true, type: 'objectId', value: id };
+    }
+    
+    // Check if it's a numeric ID
     const numId = parseInt(id);
-    return !isNaN(numId) && numId > 0;
+    if (!isNaN(numId) && numId > 0) {
+        return { isValid: true, type: 'numeric', value: numId };
+    }
+    
+    return { isValid: false, type: null, value: null };
 };
 
 // Get all products with filtering and pagination
@@ -87,26 +97,36 @@ const getAllProducts = async (req, res) => {
     }
 };
 
-// Get single product by ID - FIXED VERSION
+// Get single product by ID - FIXED to handle both ObjectId and numeric IDs
 const getProductById = async (req, res) => {
     try {
         const productIdParam = req.params.id;
+        console.log(`Received product ID: ${productIdParam}`);
         
-        // Validate product ID
-        if (!validateProductId(productIdParam)) {
+        const validation = validateProductId(productIdParam);
+        
+        if (!validation.isValid) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid product ID. Product ID must be a valid number.',
+                message: 'Invalid product ID format. Must be a valid MongoDB ObjectId or numeric ID.',
                 provided: productIdParam
             });
         }
         
-        const productId = parseInt(productIdParam);
-        console.log(`Fetching product with ID: ${productId}`);
+        let query = {};
+        
+        // Build query based on ID type
+        if (validation.type === 'objectId') {
+            query._id = validation.value;
+        } else if (validation.type === 'numeric') {
+            query.id = validation.value;
+        }
+        
+        console.log(`Searching for product with query:`, query);
         
         // Find product and increment view count
         const product = await Product.findOneAndUpdate(
-            { id: productId },
+            query,
             { $inc: { views: 1 } },
             { new: true }
         );
@@ -115,7 +135,8 @@ const getProductById = async (req, res) => {
             return res.status(404).json({
                 success: false,
                 message: 'Product not found',
-                searchedId: productId
+                searchedId: productIdParam,
+                queryUsed: query
             });
         }
         
@@ -124,7 +145,7 @@ const getProductById = async (req, res) => {
         
         // Ensure SKU is generated if missing
         if (!productData.sku || productData.sku === '') {
-            productData.sku = `${product.category.substring(0, 3).toUpperCase()}-${product.id}`;
+            productData.sku = `${product.category.substring(0, 3).toUpperCase()}-${product.id || product._id}`;
         }
         
         // Calculate stock status
@@ -143,7 +164,7 @@ const getProductById = async (req, res) => {
             productData.discount_percentage = Math.round(((product.old_price - product.new_price) / product.old_price) * 100);
         }
         
-        console.log(`Product ${productId} viewed. Total views: ${product.views}`);
+        console.log(`Product found: ${product.name}. Total views: ${product.views}`);
         
         res.json({
             success: true,
@@ -160,6 +181,78 @@ const getProductById = async (req, res) => {
     }
 };
 
+// Get product recommendations - FIXED to handle both ID types
+const getProductRecommendations = async (req, res) => {
+    try {
+        const productIdParam = req.params.id;
+        console.log(`Getting recommendations for product ID: ${productIdParam}`);
+        
+        const validation = validateProductId(productIdParam);
+        
+        if (!validation.isValid) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid product ID for recommendations'
+            });
+        }
+        
+        let query = {};
+        
+        // Build query based on ID type
+        if (validation.type === 'objectId') {
+            query._id = validation.value;
+        } else if (validation.type === 'numeric') {
+            query.id = validation.value;
+        }
+        
+        const product = await Product.findOne(query);
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message: "Product not found for recommendations"
+            });
+        }
+
+        // Build exclusion query based on the found product's ID type
+        let excludeQuery = {};
+        if (product.id) {
+            excludeQuery.id = { $ne: product.id };
+        } else {
+            excludeQuery._id = { $ne: product._id };
+        }
+
+        const relatedProducts = await Product.find({
+            $and: [
+                excludeQuery,
+                { available: true },
+                { status: 'published' },
+                {
+                    $or: [
+                        { category: product.category },
+                        { tags: { $in: product.tags || [] } },
+                        { brand: product.brand }
+                    ]
+                }
+            ]
+        }).limit(8).sort({ views: -1 });
+
+        console.log(`Found ${relatedProducts.length} recommendations for ${product.name}`);
+
+        res.json({
+            success: true,
+            recommendations: relatedProducts
+        });
+        
+    } catch (error) {
+        console.error('Error fetching recommendations:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch recommendations',
+            error: error.message
+        });
+    }
+};
+
 // Add new product
 const addProduct = async (req, res) => {
     try {
@@ -168,7 +261,7 @@ const addProduct = async (req, res) => {
         if (products.length > 0) {
             let last_product_array = products.slice(-1);
             let last_product = last_product_array[0];
-            id = last_product.id + 1;
+            id = (last_product.id || 0) + 1;
         } else {
             id = 1;
         }
@@ -215,7 +308,7 @@ const addProduct = async (req, res) => {
             tags: req.body.tags || [],
             related_products: req.body.related_products || [],
             shipping_class: req.body.shipping_class || 'standard',
-            status: req.body.status || 'draft',
+            status: req.body.status || 'published',
             available: req.body.available !== undefined ? req.body.available : true,
             featured: req.body.featured || false,
         });
@@ -239,12 +332,14 @@ const addProduct = async (req, res) => {
     }
 };
 
-// Update product
+// Update product - FIXED to handle both ID types
 const updateProduct = async (req, res) => {
     try {
         const { id } = req.body;
         
-        if (!id || !validateProductId(id)) {
+        const validation = validateProductId(id);
+        
+        if (!validation.isValid) {
             return res.status(400).json({
                 success: false,
                 message: 'Valid Product ID is required'
@@ -268,8 +363,15 @@ const updateProduct = async (req, res) => {
         if (req.body.available !== undefined) updateData.available = req.body.available;
         if (req.body.featured !== undefined) updateData.featured = req.body.featured;
 
+        let query = {};
+        if (validation.type === 'objectId') {
+            query._id = validation.value;
+        } else if (validation.type === 'numeric') {
+            query.id = validation.value;
+        }
+
         const updatedProduct = await Product.findOneAndUpdate(
-            { id: parseInt(id) },
+            query,
             updateData,
             { new: true }
         );
@@ -297,19 +399,28 @@ const updateProduct = async (req, res) => {
     }
 };
 
-// Remove product
+// Remove product - FIXED to handle both ID types
 const removeProduct = async (req, res) => {
     try {
         const { id, name } = req.body;
         
-        if (!id || !validateProductId(id)) {
+        const validation = validateProductId(id);
+        
+        if (!validation.isValid) {
             return res.status(400).json({
                 success: false,
                 message: 'Valid Product ID is required'
             });
         }
         
-        const deletedProduct = await Product.findOneAndDelete({ id: parseInt(id) });
+        let query = {};
+        if (validation.type === 'objectId') {
+            query._id = validation.value;
+        } else if (validation.type === 'numeric') {
+            query.id = validation.value;
+        }
+        
+        const deletedProduct = await Product.findOneAndDelete(query);
         
         if (!deletedProduct) {
             return res.status(404).json({
@@ -382,7 +493,10 @@ const getFeaturedProducts = async (req, res) => {
         const products = await Product.find({ 
             featured: true, 
             available: true,
-            status: 'published'
+            $or: [
+                { status: 'published' },
+                { status: { $exists: false } }
+            ]
         })
         .sort({ date: -1 })
         .limit(limit);
@@ -392,6 +506,7 @@ const getFeaturedProducts = async (req, res) => {
             products: products
         });
     } catch (error) {
+        console.error('Error fetching featured products:', error);
         res.json({
             success: false,
             error: error.message
@@ -420,7 +535,10 @@ const getProductsByCategory = async (req, res) => {
         const query = { 
             category: category, 
             available: true,
-            status: 'published'
+            $or: [
+                { status: 'published' },
+                { status: { $exists: false } }
+            ]
         };
 
         const totalProducts = await Product.countDocuments(query);
@@ -462,15 +580,23 @@ const searchProducts = async (req, res) => {
 
         let query = { 
             available: true,
-            status: 'published'
+            $or: [
+                { status: 'published' },
+                { status: { $exists: false } }
+            ]
         };
         
         if (searchTerm) {
-            query.$or = [
-                { name: { $regex: searchTerm, $options: 'i' } },
-                { description: { $regex: searchTerm, $options: 'i' } },
-                { tags: { $in: [new RegExp(searchTerm, 'i')] } },
-                { brand: { $regex: searchTerm, $options: 'i' } }
+            query.$and = [
+                query.$or || {},
+                {
+                    $or: [
+                        { name: { $regex: searchTerm, $options: 'i' } },
+                        { description: { $regex: searchTerm, $options: 'i' } },
+                        { tags: { $in: [new RegExp(searchTerm, 'i')] } },
+                        { brand: { $regex: searchTerm, $options: 'i' } }
+                    ]
+                }
             ];
         }
         
@@ -509,7 +635,7 @@ const getCategories = async (req, res) => {
         const categories = await Product.distinct('category');
         res.json({
             success: true,
-            categories: ['All', ...categories]
+            categories: categories.filter(cat => cat && cat.trim() !== '')
         });
     } catch (error) {
         res.json({
@@ -573,58 +699,6 @@ const getProductFilters = async (req, res) => {
                 sizes: [],
                 priceRange: { minPrice: 0, maxPrice: 1000 }
             }
-        });
-    }
-};
-
-// Get product recommendations
-const getProductRecommendations = async (req, res) => {
-    try {
-        const productIdParam = req.params.id;
-        
-        if (!validateProductId(productIdParam)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid product ID for recommendations'
-            });
-        }
-        
-        const productId = parseInt(productIdParam);
-        
-        const product = await Product.findOne({ id: productId });
-        if (!product) {
-            return res.status(404).json({
-                success: false,
-                message: "Product not found"
-            });
-        }
-
-        const relatedProducts = await Product.find({
-            $and: [
-                { id: { $ne: product.id } },
-                { available: true },
-                { status: 'published' },
-                {
-                    $or: [
-                        { category: product.category },
-                        { tags: { $in: product.tags || [] } },
-                        { brand: product.brand }
-                    ]
-                }
-            ]
-        }).limit(8).sort({ views: -1 });
-
-        res.json({
-            success: true,
-            recommendations: relatedProducts
-        });
-        
-    } catch (error) {
-        console.error('Error fetching recommendations:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch recommendations',
-            error: error.message
         });
     }
 };

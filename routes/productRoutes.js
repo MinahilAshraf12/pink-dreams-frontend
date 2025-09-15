@@ -1,4 +1,4 @@
-// routes/productRoutes.js - Simple version without regex
+// routes/productRoutes.js - Safe route ordering
 const express = require('express');
 const router = express.Router();
 
@@ -17,30 +17,23 @@ router.get('/test', (req, res) => {
     });
 });
 
-// IMPORTANT: Specific routes MUST come before parameterized routes
+// CRITICAL: All specific routes MUST come before parameterized routes
+// Static routes first
 router.get('/featured', productController.getFeaturedProducts);
 router.get('/categories', productController.getCategories);
 router.get('/filters', productController.getProductFilters);
-router.get('/product-filters', productController.getProductFilters); // Alternative endpoint
+router.get('/product-filters', productController.getProductFilters);
 router.get('/search', productController.searchProducts);
-
-// Category routes
-router.get('/category/:category', productController.getProductsByCategory);
-
-// Product-specific routes (BEFORE general :id route)
-router.get('/slug/:slug', productController.getProductBySlug);
-
-// This must come AFTER all other specific routes but BEFORE the general :id route
-router.get('/:id/recommendations', productController.getProductRecommendations);
-
-// General routes - These should be LAST
-router.get('/', productController.getAllProducts);
-router.get('/:id', productController.getProductById);
-
-// Legacy routes for backward compatibility
 router.get('/allproducts', productController.getAllProducts);
 
-// Admin routes (protected)
+// Specific parameterized routes (these have specific patterns)
+router.get('/category/:category', productController.getProductsByCategory);
+router.get('/slug/:slug', productController.getProductBySlug);
+
+// Product recommendations - MOVED to use product prefix
+router.get('/product/:id/recommendations', productController.getProductRecommendations);
+
+// Admin routes (protected) - these should come before general routes too
 router.post('/add', verifyToken, verifyAdmin, productController.addProduct);
 router.post('/addproduct', verifyToken, verifyAdmin, productController.addProduct);
 router.put('/update', verifyToken, verifyAdmin, productController.updateProduct);
@@ -48,7 +41,11 @@ router.post('/updateproduct', verifyToken, verifyAdmin, productController.update
 router.delete('/remove', verifyToken, verifyAdmin, productController.removeProduct);
 router.post('/removeproduct', verifyToken, verifyAdmin, productController.removeProduct);
 
-// Error handling middleware for this router
+// LAST: General catch-all routes
+router.get('/', productController.getAllProducts);
+router.get('/:id', productController.getProductById);
+
+// Error handling middleware
 router.use((err, req, res, next) => {
     console.error('Product route error:', err);
     res.status(500).json({
