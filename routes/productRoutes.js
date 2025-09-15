@@ -1,4 +1,4 @@
-// routes/productRoutes.js - Fixed to prevent path-to-regexp errors
+// routes/productRoutes.js - Simple version without regex
 const express = require('express');
 const router = express.Router();
 
@@ -17,26 +17,28 @@ router.get('/test', (req, res) => {
     });
 });
 
-// Specific routes MUST come before parameterized routes
+// IMPORTANT: Specific routes MUST come before parameterized routes
 router.get('/featured', productController.getFeaturedProducts);
 router.get('/categories', productController.getCategories);
 router.get('/filters', productController.getProductFilters);
+router.get('/product-filters', productController.getProductFilters); // Alternative endpoint
 router.get('/search', productController.searchProducts);
 
-// Category routes with specific pattern
-router.get('/category/:category([a-zA-Z0-9-_%]+)', productController.getProductsByCategory);
+// Category routes
+router.get('/category/:category', productController.getProductsByCategory);
 
 // Product-specific routes (BEFORE general :id route)
-router.get('/:id([0-9a-fA-F]{24})/recommendations', productController.getProductRecommendations);
-router.get('/slug/:slug([a-zA-Z0-9-_]+)', productController.getProductBySlug);
+router.get('/slug/:slug', productController.getProductBySlug);
 
-// General routes with parameter validation
+// This must come AFTER all other specific routes but BEFORE the general :id route
+router.get('/:id/recommendations', productController.getProductRecommendations);
+
+// General routes - These should be LAST
 router.get('/', productController.getAllProducts);
-router.get('/:id([0-9a-fA-F]{24})', productController.getProductById);
+router.get('/:id', productController.getProductById);
 
-// Legacy compatibility routes
+// Legacy routes for backward compatibility
 router.get('/allproducts', productController.getAllProducts);
-router.get('/product-filters', productController.getProductFilters);
 
 // Admin routes (protected)
 router.post('/add', verifyToken, verifyAdmin, productController.addProduct);
