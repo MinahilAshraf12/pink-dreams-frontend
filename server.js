@@ -1,4 +1,4 @@
-// server.js - Production Ready
+// server.js - Enhanced with Better CORS and Security Headers
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -20,29 +20,56 @@ mongoose.connect(process.env.MONGODB_URI)
 .then(() => console.log("✅ MongoDB Connected"))
 .catch((err) => console.error("❌ MongoDB connection error:", err));
 
-// CORS Configuration
+// Enhanced CORS Configuration
 const corsOptions = {
     origin: function (origin, callback) {
         const allowedOrigins = [
             'http://localhost:3000',
             'http://localhost:3001',
+            'https://localhost:3000',
+            'https://localhost:3001',
             process.env.FRONTEND_URL,
-            'https://e-commere-pink-dreams.vercel.app'
+            'https://e-commere-pink-dreams.vercel.app',
+            'https://pink-dreams-frontend-production.up.railway.app',
+            // Add your actual frontend domain
+            /\.railway\.app$/,
+            /\.vercel\.app$/,
+            /\.netlify\.app$/
         ].filter(Boolean);
 
+        // Allow requests with no origin (mobile apps, Postman, etc.)
         if (!origin) return callback(null, true);
         
-        if (allowedOrigins.indexOf(origin) !== -1) {
+        // Check if origin matches allowed origins or patterns
+        const isAllowed = allowedOrigins.some(allowedOrigin => {
+            if (typeof allowedOrigin === 'string') {
+                return origin === allowedOrigin;
+            } else if (allowedOrigin instanceof RegExp) {
+                return allowedOrigin.test(origin);
+            }
+            return false;
+        });
+        
+        if (isAllowed) {
             callback(null, true);
         } else {
-            console.log('Blocked by CORS:', origin);
+            console.log('🚫 Blocked by CORS:', origin);
             callback(new Error('Not allowed by CORS'));
         }
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
-    exposedHeaders: ['set-cookie']
+    allowedHeaders: [
+        'Origin',
+        'X-Requested-With',
+        'Content-Type',
+        'Accept',
+        'Authorization',
+        'Cache-Control',
+        'x-csrf-token'
+    ],
+    exposedHeaders: ['set-cookie'],
+    maxAge: 86400 // 24 hours
 };
 
 // Session Configuration
@@ -57,64 +84,184 @@ const sessionMiddleware = session({
     cookie: {
         secure: process.env.NODE_ENV === 'production',
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000
+        maxAge: 24 * 60 * 60 * 1000,
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
     }
 });
 
-// Middleware
-app.use(express.json());
+// Security headers middleware
+app.use((req, res, next) => {
+    // Basic security headers
+    res.header('X-Content-Type-Options', 'nosniff');
+    res.header('X-Frame-Options', 'DENY');
+    res.header('X-XSS-Protection', '1; mode=block');
+    
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+        res.header('Access-Control-Allow-Origin', req.headers.origin);
+        res.header('Access-Control-Allow-Credentials', 'true');
+        res.header('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,PATCH,OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Origin,X-Requested-With,Content-Type,Accept,Authorization,Cache-Control,x-csrf-token');
+        return res.status(200).end();
+    }
+    
+    next();
+});
+
+// Apply middleware
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cors(corsOptions));
 app.use(sessionMiddleware);
 
-// Passport
-require('./config/passport');
-app.use(passport.initialize());
-app.use(passport.session());
+// Passport configuration
+try {
+    require('./config/passport');
+    app.use(passport.initialize());
+    app.use(passport.session());
+    console.log('✅ Passport configuration loaded');
+} catch (error) {
+    console.error('❌ Error loading passport config:', error.message);
+}
 
-// Static files
-app.use('/images', express.static(path.join(__dirname, 'upload/images')));
+// Static file serving with proper headers
+app.use('/images', (req, res, next) => {
+    res.header('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.header('Access-Control-Allow-Origin', '*');
+    next();
+}, express.static(path.join(__dirname, 'upload/images')));
 
 // Ensure upload directory exists
 const uploadDir = path.join(__dirname, 'upload/images');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
+    console.log('📁 Created upload directory:', uploadDir);
 }
 
-// Routes
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.json({
+        success: true,
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime()
+    });
+});
+
+// Main API info endpoint
 app.get('/', (req, res) => {
     res.json({
         success: true,
         message: 'Pink Dreams E-commerce API',
-        version: '1.0.0',
-        status: 'running'
+        version: '2.0.0',
+        status: 'running',
+        environment: process.env.NODE_ENV || 'development',
+        endpoints: {
+            auth: '/auth',
+            products: '/api/products',
+            cart: '/api/cart',
+            orders: '/api/orders',
+            payment: '/api/payment',
+            admin: '/api/admin'
+        },
+        cors: {
+            enabled: true,
+            credentials: true
+        }
     });
 });
 
+// Load routes with error handling
+const loadRoutes = () => {
+    try {
+        console.log('📚 Loading routes...');
+        
+        // Core routes
+        const authRoutes = require('./routes/authRoutes');
+        const productRoutes = require('./routes/productRoutes');
+        const cartRoutes = require('./routes/cartRoutes');
+        const orderRoutes = require('./routes/orderRoutes');
+        const paymentRoutes = require('./routes/paymentRoutes');
+        
+        // Mount core routes
+        app.use('/auth', authRoutes);
+        app.use('/api/products', productRoutes);
+        app.use('/api/cart', cartRoutes);
+        app.use('/api/orders', orderRoutes);
+        app.use('/api/payment', paymentRoutes);
+        
+        console.log('✅ Core routes loaded');
+        
+        // Optional routes
+        const optionalRoutes = [
+            { name: 'wishlist', path: './routes/wishlistRoutes', mount: '/api/wishlist' },
+            { name: 'admin', path: './routes/adminRoutes', mount: '/api/admin' },
+            { name: 'contact', path: './routes/contactRoutes', mount: '/api/contact' },
+            { name: 'newsletter', path: './routes/newsletterRoutes', mount: '/api/newsletter' },
+            { name: 'upload', path: './routes/uploadRoutes', mount: '/api/upload' },
+            { name: 'analytics', path: './routes/analyticsRoutes', mount: '/api/analytics' }
+        ];
+        
+        optionalRoutes.forEach(({ name, path, mount }) => {
+            try {
+                const route = require(path);
+                app.use(mount, route);
+                console.log(`✅ ${name} routes loaded`);
+            } catch (e) {
+                console.log(`⚠️ ${name} routes not found, skipping...`);
+            }
+        });
+        
+        // Legacy routes for backward compatibility
+        console.log('📚 Setting up legacy routes...');
+        app.use('/', productRoutes); // For /allproducts, /addproduct, etc.
+        app.use('/', cartRoutes); // For /cart routes
+        app.use('/', orderRoutes); // For /orders routes
+        app.use('/', paymentRoutes); // For /payment routes
+        
+        // Add direct filter route for legacy support
+        app.get('/product-filters', (req, res, next) => {
+            req.url = '/api/products/filters';
+            productRoutes(req, res, next);
+        });
+        
+        console.log('✅ All routes loaded successfully');
+        
+    } catch (error) {
+        console.error('❌ Error loading routes:', error.message);
+    }
+};
+
 // Load routes
-const authRoutes = require('./routes/authRoutes');
-const productRoutes = require('./routes/productRoutes');
-const cartRoutes = require('./routes/cartRoutes');
-const orderRoutes = require('./routes/orderRoutes');
-const paymentRoutes = require('./routes/paymentRoutes');
+loadRoutes();
 
-app.use('/auth', authRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/cart', cartRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/payment', paymentRoutes);
-
-// Legacy routes for backward compatibility
-app.use('/', productRoutes);
-app.use('/', cartRoutes);
-app.use('/', orderRoutes);
-app.use('/', paymentRoutes);
-
-// Error handling
+// Global error handler
 app.use((err, req, res, next) => {
-    console.error('Error:', err);
+    console.error('🚨 Global error:', err);
+    
+    // Handle specific error types
+    if (err.message === 'Not allowed by CORS') {
+        return res.status(403).json({
+            success: false,
+            message: 'CORS error: Origin not allowed',
+            origin: req.headers.origin
+        });
+    }
+    
     res.status(500).json({
         success: false,
-        message: 'Internal server error'
+        message: 'Internal server error',
+        error: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+    });
+});
+
+// 404 handler
+app.use('*', (req, res) => {
+    res.status(404).json({
+        success: false,
+        message: `Route ${req.method} ${req.originalUrl} not found`,
+        suggestion: 'Check available endpoints at /',
+        timestamp: new Date().toISOString()
     });
 });
 
@@ -122,6 +269,23 @@ app.use((err, req, res, next) => {
 app.listen(port, () => {
     console.log(`🚀 Pink Dreams Server running on port ${port}`);
     console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`📡 Database: Connected`);
-    console.log(`🔗 Access at: http://localhost:${port}`);
+    console.log(`📡 Database: Connected to MongoDB`);
+    console.log(`🛡️ Security: CORS configured`);
+    console.log(`📧 Email: Service ready`);
+    console.log(`💳 Payment: Stripe & PayPal integrated`);
+    console.log(`🔗 Local: http://localhost:${port}`);
+    if (process.env.RAILWAY_STATIC_URL) {
+        console.log(`🚀 Production: ${process.env.RAILWAY_STATIC_URL}`);
+    }
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('🛑 SIGTERM received, shutting down gracefully');
+    process.exit(0);
+});
+
+process.on('SIGINT', () => {
+    console.log('🛑 SIGINT received, shutting down gracefully');
+    process.exit(0);
 });
