@@ -2250,7 +2250,7 @@ app.post("/upload", upload.single('product'), (req, res) => {
 // Add this endpoint to fix existing product images
 app.post('/fix-image-urls', async (req, res) => {
     try {
-        const baseUrl = process.env.BASE_URL || 'https://your-railway-app.railway.app';
+        const baseUrl = process.env.BASE_URL || 'https://pink-dreams-store.onrender.com';
         
         // Update all products with localhost URLs
         const result = await Product.updateMany(
