@@ -119,7 +119,7 @@ const corsOptions = {
             'http://localhost:3001',
             process.env.FRONTEND_URL,
             // Add your actual frontend domain here
-            'https://e-commere-pink-dreams.vercel.app'
+            'https://pink-dreams-ikftech.vercel.app'
         ].filter(Boolean); // Remove undefined values
 
         // Allow requests with no origin (like mobile apps or Postman)
