@@ -440,5 +440,6 @@ module.exports = {
     sendOrderConfirmationEmail,
     sendOrderStatusEmail,
     sendTestEmail,
-    createTransporter
+    createTransporter,
+    sendWithResendAPI
 };
