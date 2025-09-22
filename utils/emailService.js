@@ -4,6 +4,10 @@ require('dotenv').config();
 
 // Send email using Resend HTTP API
 const sendWithResendAPI = async (mailOptions) => {
+    if (!process.env.RESEND_API_KEY) {
+        throw new Error('RESEND_API_KEY not configured');
+    }
+
     const response = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
