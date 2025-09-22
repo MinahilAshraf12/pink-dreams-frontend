@@ -117,18 +117,18 @@ const corsOptions = {
         const allowedOrigins = [
             'http://localhost:3000',
             'http://localhost:3001',
-            process.env.FRONTEND_URL,
-            // Add your actual frontend domain here
-            'https://pink-dreams-ikftech.vercel.app'
-        ].filter(Boolean); // Remove undefined values
+            'https://pink-dreams-ikftech.vercel.app',
+            'https://pink-dreams-store.onrender.com', // Add your backend URL
+            process.env.FRONTEND_URL
+        ].filter(Boolean);
 
-        // Allow requests with no origin (like mobile apps or Postman)
+        // Allow requests with no origin (mobile apps, Postman, etc.)
         if (!origin) return callback(null, true);
         
         if (allowedOrigins.indexOf(origin) !== -1) {
             callback(null, true);
         } else {
-            console.log('Blocked by CORS:', origin);
+            console.log('CORS blocked origin:', origin);
             callback(new Error('Not allowed by CORS'));
         }
     },
@@ -140,6 +140,12 @@ const corsOptions = {
 
 // Remove the duplicate CORS lines and use only this:
 app.use(cors(corsOptions));
+console.log('CORS origins configured:', [
+    'http://localhost:3000',
+    'http://localhost:3001', 
+    'https://pink-dreams-ikftech.vercel.app',
+    process.env.FRONTEND_URL
+].filter(Boolean));
 
 // JWT Secret - In production, use environment variable
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-here';
