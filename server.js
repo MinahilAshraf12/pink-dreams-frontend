@@ -20,34 +20,7 @@ const MongoStore = require('connect-mongo');
 const rateLimit = require('express-rate-limit');
 const slowDown = require('express-slow-down');
 
-const sendWithResendAPI = async (mailOptions) => {
-    if (!process.env.RESEND_API_KEY) {
-        throw new Error('RESEND_API_KEY not configured');
-    }
 
-    const response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            from: mailOptions.from,
-            to: mailOptions.to,
-            subject: mailOptions.subject,
-            html: mailOptions.html,
-            text: mailOptions.text
-        })
-    });
-
-    if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Resend API error: ${response.status} - ${error}`);
-    }
-
-    const result = await response.json();
-    return { messageId: result.id };
-};
 // 1. FIRST: Configure trust proxy (IMPORTANT for correct IP detection)
 app.set('trust proxy', 1); // Trust first proxy (essential for rate limiting)
 
@@ -1499,129 +1472,132 @@ app.post('/auth/forgot-password',
             // Create reset URL
             const resetURL = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
 
-            console.log('🔗 Reset URL generated:', resetURL);
-
-            // FIXED: Send reset email using Resend HTTP API
+            // FIXED: Send reset email using Resend
             try {
-                console.log('📧 Sending password reset email using Resend HTTP API...');
-                
-                const emailHtml = `
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <meta charset="utf-8">
-                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                        <title>Password Reset - Pink Dreams</title>
-                    </head>
-                    <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f9fafb;">
-                        <div style="max-width: 600px; margin: 0 auto; background: white;">
-                            <!-- Header -->
-                            <div style="background: linear-gradient(135deg, #ec4899, #f43f5e); color: white; padding: 30px 20px; text-align: center; border-radius: 8px 8px 0 0;">
-                                <div style="background: rgba(255,255,255,0.2); width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center;">
-                                    <span style="font-size: 24px; font-weight: bold;">🔐</span>
-                                </div>
-                                <h1 style="margin: 0; font-size: 24px;">Reset Your Password</h1>
-                                <p style="margin: 8px 0 0; opacity: 0.9; font-size: 16px;">Pink Dreams Fashion Store</p>
-                            </div>
-                            
-                            <!-- Content -->
-                            <div style="padding: 30px 20px;">
-                                <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px;">Hi ${user.name},</p>
-                                
-                                <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 25px;">
-                                    We received a request to reset your password for your Pink Dreams account. If you didn't make this request, you can safely ignore this email.
-                                </p>
-                                
-                                <!-- Reset Button -->
-                                <div style="text-align: center; margin: 30px 0;">
-                                    <a href="${resetURL}" style="display: inline-block; background: linear-gradient(135deg, #ec4899, #f43f5e); color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 12px rgba(236, 72, 153, 0.3);">
-                                        Reset My Password
-                                    </a>
+                // Use Resend HTTP API directly (since you have it configured)
+                if (process.env.RESEND_API_KEY) {
+                    console.log('📧 Using Resend API for password reset email');
+                    
+                    const emailHtml = `
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <meta charset="utf-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                            <title>Password Reset - Pink Dreams</title>
+                        </head>
+                        <body style="margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: #f9fafb;">
+                            <div style="max-width: 600px; margin: 0 auto; background: white;">
+                                <!-- Header -->
+                                <div style="background: linear-gradient(135deg, #ec4899, #f43f5e); color: white; padding: 30px 20px; text-align: center; border-radius: 8px 8px 0 0;">
+                                    <div style="background: rgba(255,255,255,0.2); width: 60px; height: 60px; border-radius: 50%; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center;">
+                                        <span style="font-size: 24px; font-weight: bold;">🔐</span>
+                                    </div>
+                                    <h1 style="margin: 0; font-size: 24px;">Reset Your Password</h1>
+                                    <p style="margin: 8px 0 0; opacity: 0.9; font-size: 16px;">Pink Dreams Fashion Store</p>
                                 </div>
                                 
-                                <!-- Alternative Link -->
-                                <div style="margin: 25px 0;">
-                                    <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 0 0 10px 0;">
-                                        If the button doesn't work, copy and paste this link into your browser:
+                                <!-- Content -->
+                                <div style="padding: 30px 20px;">
+                                    <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 20px;">Hi ${user.name},</p>
+                                    
+                                    <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 0 0 25px;">
+                                        We received a request to reset your password for your Pink Dreams account. If you didn't make this request, you can safely ignore this email.
                                     </p>
-                                    <div style="background: #f3f4f6; padding: 15px; border-radius: 8px; word-break: break-all; font-family: monospace; font-size: 12px; color: #374151; border: 1px solid #e5e7eb;">
+                                    
+                                    <!-- Reset Button -->
+                                    <div style="text-align: center; margin: 30px 0;">
+                                        <a href="${resetURL}" style="display: inline-block; background: linear-gradient(135deg, #ec4899, #f43f5e); color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; box-shadow: 0 4px 12px rgba(236, 72, 153, 0.3);">
+                                            Reset My Password
+                                        </a>
+                                    </div>
+                                    
+                                    <p style="color: #6b7280; font-size: 14px; line-height: 1.6; margin: 25px 0 0;">
+                                        If the button doesn't work, you can copy and paste this link into your browser:
+                                    </p>
+                                    <p style="background: #f3f4f6; padding: 10px; border-radius: 4px; word-break: break-all; font-size: 12px; color: #374151; margin: 10px 0 20px;">
                                         ${resetURL}
+                                    </p>
+                                    
+                                    <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 30px;">
+                                        <p style="color: #6b7280; font-size: 12px; line-height: 1.5; margin: 0;">
+                                            <strong>Security Note:</strong> This link will expire in 1 hour for your security. If you didn't request this password reset, your account is still secure and no action is needed.
+                                        </p>
+                                        <p style="color: #6b7280; font-size: 12px; line-height: 1.5; margin: 10px 0 0;">
+                                            Sent on: ${new Date().toLocaleString()}<br>
+                                            Request from IP: ${req.ip}
+                                        </p>
                                     </div>
                                 </div>
                                 
-                                <!-- Security Info -->
-                                <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #f59e0b;">
-                                    <h3 style="color: #92400e; margin: 0 0 10px 0; font-size: 16px;">🛡️ Security Notice</h3>
-                                    <ul style="color: #92400e; margin: 0; padding-left: 20px; line-height: 1.6;">
-                                        <li>This link will expire in <strong>1 hour</strong> for your security</li>
-                                        <li>Only use this link if you requested a password reset</li>
-                                        <li>Never share this link with anyone</li>
-                                        <li>If you didn't request this, your account is still secure</li>
-                                    </ul>
-                                </div>
-                                
-                                <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 20px 0;">
-                                    If you continue to have trouble, please contact our support team at 
-                                    <a href="mailto:${process.env.EMAIL_FROM || 'support@pink-dreams.com'}" style="color: #ec4899; text-decoration: none;">
-                                        ${process.env.EMAIL_FROM || 'support@pink-dreams.com'}
-                                    </a>
-                                </p>
-                                
-                                <p style="color: #374151; font-size: 16px; line-height: 1.6; margin: 20px 0 0 0;">
-                                    Best regards,<br>
-                                    <strong style="color: #ec4899;">The Pink Dreams Team</strong>
-                                </p>
-                                
-                                <!-- Footer Info -->
-                                <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 30px;">
-                                    <p style="color: #6b7280; font-size: 12px; line-height: 1.5; margin: 0;">
-                                        <strong>Reset Request Details:</strong><br>
-                                        📅 Requested: ${new Date().toLocaleString()}<br>
-                                        🌐 IP Address: ${req.ip}<br>
-                                        ⏰ Expires: ${resetTokenExpiry.toLocaleString()}
-                                    </p>
+                                <!-- Footer -->
+                                <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px; background-color: #f9fafb;">
+                                    <p style="margin: 0 0 10px;">© 2024 Pink Dreams Fashion Store. All rights reserved.</p>
+                                    <p style="margin: 0;">Need help? Contact us at ${process.env.EMAIL_FROM || 'support@pink-dreams.com'}</p>
                                 </div>
                             </div>
-                            
-                            <!-- Footer -->
-                            <div style="text-align: center; padding: 20px; color: #6b7280; font-size: 12px; background-color: #f9fafb;">
-                                <p style="margin: 0 0 10px;">© 2024 Pink Dreams Fashion Store. All rights reserved.</p>
-                                <p style="margin: 0;">Need help? Contact us at ${process.env.EMAIL_FROM || 'support@pink-dreams.com'}</p>
+                        </body>
+                        </html>
+                    `;
+
+                    // Send email using Resend HTTP API
+                    const response = await fetch('https://api.resend.com/emails', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            from: `"Pink Dreams Store" <${process.env.EMAIL_FROM || 'noreply@resend.dev'}>`,
+                            to: email,
+                            subject: 'Reset Your Pink Dreams Password',
+                            html: emailHtml
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const error = await response.text();
+                        throw new Error(`Resend API error: ${response.status} - ${error}`);
+                    }
+
+                    const result = await response.json();
+                    console.log(`✅ Password reset email sent successfully via Resend API. Message ID: ${result.id}`);
+                    
+                } else {
+                    // Fallback to SMTP transporter
+                    console.log('📧 Using SMTP fallback for password reset email');
+                    const transporter = createTransporter(); // FIXED: Correct function name
+                    
+                    const mailOptions = {
+                        from: `"Pink Dreams Store" <${process.env.EMAIL_FROM || process.env.EMAIL_USER || 'noreply@pink-dreams.com'}>`,
+                        to: email,
+                        subject: 'Reset Your Pink Dreams Password',
+                        html: `
+                            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                                <div style="background: linear-gradient(135deg, #ec4899, #f43f5e); color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
+                                    <h2 style="margin: 0;">Reset Your Password</h2>
+                                </div>
+                                
+                                <div style="background: white; padding: 20px; border: 1px solid #e5e7eb; border-radius: 0 0 8px 8px;">
+                                    <p>Hi ${user.name},</p>
+                                    <p>We received a request to reset your password. Click the button below to reset it:</p>
+                                    
+                                    <div style="text-align: center; margin: 30px 0;">
+                                        <a href="${resetURL}" style="display: inline-block; background: linear-gradient(135deg, #ec4899, #f43f5e); color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">
+                                            Reset My Password
+                                        </a>
+                                    </div>
+                                    
+                                    <p style="font-size: 12px; color: #6b7280;">This link will expire in 1 hour for security.</p>
+                                    <p style="font-size: 12px; color: #6b7280;">Request from IP: ${req.ip}</p>
+                                </div>
                             </div>
-                        </div>
-                    </body>
-                    </html>
-                `;
+                        `
+                    };
 
-                const mailOptions = {
-                    from: `"Pink Dreams Store" <${process.env.EMAIL_FROM || 'noreply@resend.dev'}>`,
-                    to: email,
-                    subject: 'Reset Your Pink Dreams Password',
-                    html: emailHtml,
-                    text: `
-Password Reset Request
-
-Hi ${user.name},
-
-We received a request to reset your password for your Pink Dreams account.
-
-Reset your password by clicking this link:
-${resetURL}
-
-This link will expire in 1 hour for security.
-
-If you didn't request this reset, you can safely ignore this email.
-
-Best regards,
-The Pink Dreams Team
-
-Pink Dreams Fashion Store
-                    `
-                };
-
-                // Send email using Resend HTTP API
-                const result = await sendWithResendAPI(mailOptions);
-                console.log(`✅ Password reset email sent successfully via Resend API. Message ID: ${result.messageId}`);
+                    await transporter.sendMail(mailOptions);
+                    console.log(`✅ Password reset email sent via SMTP to: ${email}`);
+                }
 
             } catch (emailError) {
                 console.error('❌ Error sending reset email:', emailError);
@@ -1653,9 +1629,6 @@ Pink Dreams Fashion Store
         }
     }
 );
-
-console.log('✅ Password reset endpoint updated to use Resend HTTP API');
-console.log('🔐 Password reset emails will now use the same service as order confirmations and contact form');
 
 // KEEP all your other existing routes unchanged:
 // - /auth/profile (GET)
