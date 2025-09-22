@@ -111,75 +111,35 @@ const generalLimiter = rateLimit({
 console.log('🛡️ Rate limiting configured and ready to apply to auth routes');
 
 app.use(express.json());
-// Replace your existing CORS configuration in server.js with this fixed version
-
+// Replace your CORS configuration with this
 const corsOptions = {
     origin: function (origin, callback) {
-        // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) return callback(null, true);
-        
         const allowedOrigins = [
             'http://localhost:3000',
             'http://localhost:3001',
-            'https://pink-dreams-ikftech.vercel.app',
-            // Add multiple variations of your Vercel URL to be safe
-            'https://pink-dreams-ikftech.vercel.app/',
-            // If you have a custom domain, add it here too
-            process.env.FRONTEND_URL
+            process.env.FRONTEND_URL,
+            // Add your actual frontend domain here
+            'https://pink-dreams-ikftech.vercel.app'
         ].filter(Boolean); // Remove undefined values
 
-        console.log('🌐 CORS Check - Origin:', origin);
-        console.log('🌐 CORS Check - Allowed origins:', allowedOrigins);
+        // Allow requests with no origin (like mobile apps or Postman)
+        if (!origin) return callback(null, true);
         
         if (allowedOrigins.indexOf(origin) !== -1) {
-            console.log('✅ CORS allowed for:', origin);
             callback(null, true);
         } else {
-            console.log('❌ CORS blocked for:', origin);
-            console.log('🔍 Make sure your frontend URL exactly matches one of the allowed origins');
-            // For debugging - temporarily allow in development
-            if (process.env.NODE_ENV === 'development') {
-                console.log('🔧 Development mode - allowing request anyway');
-                callback(null, true);
-            } else {
-                callback(new Error('Not allowed by CORS'));
-            }
+            console.log('Blocked by CORS:', origin);
+            callback(new Error('Not allowed by CORS'));
         }
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: [
-        'Content-Type', 
-        'Authorization', 
-        'x-csrf-token',
-        'Accept',
-        'Origin',
-        'X-Requested-With'
-    ],
-    exposedHeaders: ['set-cookie'],
-    // Handle preflight requests
-    optionsSuccessStatus: 200 // Some legacy browsers choke on 204
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-csrf-token'],
+    exposedHeaders: ['set-cookie']
 };
 
-// Apply CORS middleware
+// Remove the duplicate CORS lines and use only this:
 app.use(cors(corsOptions));
-
-// Add explicit OPTIONS handler for preflight requests
-app.options('*', cors(corsOptions));
-
-// Add this middleware to log all requests for debugging
-app.use((req, res, next) => {
-    console.log(`📝 ${req.method} ${req.path} - Origin: ${req.headers.origin || 'none'}`);
-    next();
-});
-
-console.log('🌐 CORS configuration updated with enhanced debugging');
-console.log('🌐 Allowed origins:', [
-    'http://localhost:3000',
-    'http://localhost:3001', 
-    'https://pink-dreams-ikftech.vercel.app',
-    process.env.FRONTEND_URL
-].filter(Boolean));
 
 // JWT Secret - In production, use environment variable
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-here';
