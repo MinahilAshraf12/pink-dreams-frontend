@@ -119,8 +119,7 @@ const corsOptions = {
             'http://localhost:3001',
             'https://pink-dreams-ikftech.vercel.app',
             'https://pink-dreams-store.onrender.com',
-             " https://pink-dreams-admin.vercel.app",
-    " https://pink-dreams-admin.vercel.app/",
+        
             process.env.FRONTEND_URL
         ].filter(Boolean);
 
@@ -354,7 +353,222 @@ console.log('💳 Enhanced checkout system loaded');
 console.log('🔵 Stripe integration ready');
 console.log('🔵 PayPal integration ready');
 
+const Admin = mongoose.model("Admin", {
+    username: {
+        type: String,
+        required: true,
+        unique: true,
+        trim: true
+    },
+    password: {
+        type: String,
+        required: true
+    },
+    name: {
+        type: String,
+        required: true
+    },
+    role: {
+        type: String,
+        enum: ['admin', 'super_admin'],
+        default: 'admin'
+    },
+    lastLogin: {
+        type: Date,
+        default: null
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now
+    }
+});
 
+// Middleware to verify admin token
+const verifyAdminToken = (req, res, next) => {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+        return res.status(401).json({
+            success: false,
+            message: 'Access denied. No token provided.'
+        });
+    }
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        
+        // Check if it's an admin token
+        if (decoded.type !== 'admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. Admin privileges required.'
+            });
+        }
+        
+        req.admin = decoded;
+        next();
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: 'Invalid token.'
+        });
+    }
+};
+
+// Admin Login
+app.post('/admin/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        
+        console.log('Admin login attempt:', username);
+
+        // Validation
+        if (!username || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Username and password are required'
+            });
+        }
+
+        // Find admin
+        const admin = await Admin.findOne({ username: username });
+        
+        if (!admin) {
+            console.log('Admin not found:', username);
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid username or password'
+            });
+        }
+
+        // Check password (simple comparison for now)
+        const isPasswordValid = await bcrypt.compare(password, admin.password);
+        
+        if (!isPasswordValid) {
+            console.log('Invalid password for admin:', username);
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid username or password'
+            });
+        }
+
+        // Update last login
+        admin.lastLogin = new Date();
+        await admin.save();
+
+        // Generate JWT token
+        const token = jwt.sign(
+            { 
+                id: admin._id, 
+                username: admin.username, 
+                role: admin.role,
+                type: 'admin' // Important: mark as admin token
+            },
+            JWT_SECRET,
+            { expiresIn: '8h' }
+        );
+
+        console.log('Admin login successful:', username);
+
+        res.json({
+            success: true,
+            message: 'Admin login successful',
+            token,
+            admin: {
+                id: admin._id,
+                username: admin.username,
+                name: admin.name,
+                role: admin.role,
+                lastLogin: admin.lastLogin
+            }
+        });
+
+    } catch (error) {
+        console.error('Admin login error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error'
+        });
+    }
+});
+
+// Get admin profile
+app.get('/admin/profile', verifyAdminToken, async (req, res) => {
+    try {
+        const admin = await Admin.findById(req.admin.id).select('-password');
+        
+        if (!admin) {
+            return res.status(404).json({
+                success: false,
+                message: 'Admin not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            admin: {
+                id: admin._id,
+                username: admin.username,
+                name: admin.name,
+                role: admin.role,
+                lastLogin: admin.lastLogin,
+                createdAt: admin.createdAt
+            }
+        });
+    } catch (error) {
+        console.error('Admin profile error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error'
+        });
+    }
+});
+
+// Admin logout
+app.post('/admin/logout', verifyAdminToken, (req, res) => {
+    res.json({
+        success: true,
+        message: 'Admin logout successful'
+    });
+});
+
+// Create default admin if none exists
+const createDefaultAdmin = async () => {
+    try {
+        const adminCount = await Admin.countDocuments();
+        
+        if (adminCount === 0) {
+            console.log('Creating default admin...');
+            
+            const defaultPassword = 'admin123';
+            const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+            
+            const defaultAdmin = new Admin({
+                username: 'admin',
+                password: hashedPassword,
+                name: 'Administrator',
+                role: 'super_admin'
+            });
+            
+            await defaultAdmin.save();
+            
+            console.log('✅ Default admin created:');
+            console.log('   Username: admin');
+            console.log('   Password: admin123');
+        }
+    } catch (error) {
+        console.error('Error creating default admin:', error);
+    }
+};
+
+// Initialize default admin on server start
+createDefaultAdmin();
+
+console.log('🔐 Simple admin login system loaded');
+console.log('📝 Admin endpoints:');
+console.log('   POST /admin/login - Admin login');
+console.log('   GET /admin/profile - Get admin profile');
+console.log('   POST /admin/logout - Admin logout');
 
 
 // REPLACE YOUR EXISTING /payment/confirm ENDPOINT WITH THIS:
