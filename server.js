@@ -145,6 +145,8 @@ console.log('CORS origins configured:', [
     'http://localhost:3001', 
     'https://pink-dreams-ikftech.vercel.app',
     'https://pink-dreams-ikftech.vercel.app/',
+    " https://pink-dreams-admin.vercel.app",
+    " https://pink-dreams-admin.vercel.app/",
     process.env.FRONTEND_URL
 ].filter(Boolean));
 
