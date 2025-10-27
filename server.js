@@ -7409,14 +7409,15 @@ app.post('/products/bulk-upload', bulkUpload.single('file'), async (req, res) =>
                     name: row.name,
                     category: row.category || 'Dresses',
                     new_price: parseFloat(row.new_price),
-                    old_price: row.old_price ? parseFloat(row.old_price) : undefined,
+                    old_price: row.old_price ? parseFloat(row.old_price) : parseFloat(row.new_price), // Use new_price as default
                     brand: row.brand || '',
                     sku: row.sku || `SKU-${newId}`,
                     description: row.description || '',
                     short_description: row.short_description || '',
                     available: parseBoolean(row.available !== undefined ? row.available : true),
                     featured: parseBoolean(row.featured || false),
-                    image: row.image || '',
+                    // Use placeholder image if no image provided
+                    image: row.image || 'https://placehold.co/400x400/FFB6C1/FFFFFF?text=No+Image',
                     images: parseArray(row.images || row.image || ''),
                     features: parseArray(row.features || ''),
                     colors: parseArray(row.colors || ''),
