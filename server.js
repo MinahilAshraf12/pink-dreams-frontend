@@ -167,7 +167,633 @@ mongoose.connect(process.env.MONGODB_URI, {
 
 
 // Order Schema
+// ============================================
+// PROMO CODE BACKEND - Add to your server.js
+// ============================================
 
+// 1. PROMO CODE SCHEMA (Add after Order Schema)
+const PromoCode = mongoose.model("PromoCode", {
+    code: {
+        type: String,
+        required: true,
+        unique: true,
+        uppercase: true,
+        trim: true
+    },
+    title: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    description: {
+        type: String,
+        default: ''
+    },
+    discountType: {
+        type: String,
+        enum: ['percentage', 'fixed'],
+        default: 'percentage'
+    },
+    discountValue: {
+        type: Number,
+        required: true,
+        min: 0
+    },
+    minPurchaseAmount: {
+        type: Number,
+        default: 0
+    },
+    maxDiscountAmount: {
+        type: Number,
+        default: null
+    },
+    usageLimit: {
+        type: Number,
+        default: null // null means unlimited
+    },
+    usedCount: {
+        type: Number,
+        default: 0
+    },
+    isActive: {
+        type: Boolean,
+        default: true
+    },
+    startDate: {
+        type: Date,
+        required: true
+    },
+    expiryDate: {
+        type: Date,
+        required: true
+    },
+    applicableProducts: [{
+        type: Number // Product IDs, empty array means all products
+    }],
+    applicableCategories: [{
+        type: String // Categories, empty array means all categories
+    }],
+    createdBy: {
+        type: String,
+        default: 'admin'
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now
+    },
+    updatedAt: {
+        type: Date,
+        default: Date.now
+    }
+});
+
+// 2. MIDDLEWARE TO CHECK IF PROMO CODE IS VALID
+const validatePromoCode = async (code) => {
+    try {
+        const promoCode = await PromoCode.findOne({ code: code.toUpperCase() });
+
+        if (!promoCode) {
+            return {
+                valid: false,
+                message: 'Invalid promo code'
+            };
+        }
+
+        // Check if active
+        if (!promoCode.isActive) {
+            return {
+                valid: false,
+                message: 'This promo code is inactive'
+            };
+        }
+
+        // Check if expired
+        const now = new Date();
+        if (now < promoCode.startDate) {
+            return {
+                valid: false,
+                message: 'This promo code is not active yet'
+            };
+        }
+
+        if (now > promoCode.expiryDate) {
+            return {
+                valid: false,
+                message: 'This promo code has expired'
+            };
+        }
+
+        // Check usage limit
+        if (promoCode.usageLimit && promoCode.usedCount >= promoCode.usageLimit) {
+            return {
+                valid: false,
+                message: 'This promo code has reached its usage limit'
+            };
+        }
+
+        return {
+            valid: true,
+            promoCode: promoCode
+        };
+
+    } catch (error) {
+        return {
+            valid: false,
+            message: 'Error validating promo code'
+        };
+    }
+};
+
+// 3. ADMIN ROUTES FOR PROMO CODE MANAGEMENT
+
+// Get all promo codes (Admin only)
+app.get('/admin/promocodes', verifyAdminToken, async (req, res) => {
+    try {
+        const { status, search } = req.query;
+        let query = {};
+
+        // Filter by status
+        if (status === 'active') {
+            query.isActive = true;
+            query.expiryDate = { $gte: new Date() };
+        } else if (status === 'inactive') {
+            query.isActive = false;
+        } else if (status === 'expired') {
+            query.expiryDate = { $lt: new Date() };
+        }
+
+        // Search by code or title
+        if (search) {
+            query.$or = [
+                { code: { $regex: search, $options: 'i' } },
+                { title: { $regex: search, $options: 'i' } }
+            ];
+        }
+
+        const promoCodes = await PromoCode.find(query).sort({ createdAt: -1 });
+
+        res.json({
+            success: true,
+            promoCodes: promoCodes
+        });
+
+    } catch (error) {
+        console.error('Error fetching promo codes:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch promo codes'
+        });
+    }
+});
+
+// Get single promo code (Admin only)
+app.get('/admin/promocodes/:id', verifyAdminToken, async (req, res) => {
+    try {
+        const promoCode = await PromoCode.findById(req.params.id);
+
+        if (!promoCode) {
+            return res.status(404).json({
+                success: false,
+                message: 'Promo code not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            promoCode: promoCode
+        });
+
+    } catch (error) {
+        console.error('Error fetching promo code:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch promo code'
+        });
+    }
+});
+
+// Create new promo code (Admin only)
+app.post('/admin/promocodes', verifyAdminToken, async (req, res) => {
+    try {
+        const {
+            code,
+            title,
+            description,
+            discountType,
+            discountValue,
+            minPurchaseAmount,
+            maxDiscountAmount,
+            usageLimit,
+            startDate,
+            expiryDate,
+            applicableProducts,
+            applicableCategories
+        } = req.body;
+
+        // Validation
+        if (!code || !title || !discountValue || !startDate || !expiryDate) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please provide all required fields'
+            });
+        }
+
+        // Check if code already exists
+        const existingCode = await PromoCode.findOne({ code: code.toUpperCase() });
+        if (existingCode) {
+            return res.status(400).json({
+                success: false,
+                message: 'Promo code already exists'
+            });
+        }
+
+        // Validate dates
+        if (new Date(startDate) >= new Date(expiryDate)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Expiry date must be after start date'
+            });
+        }
+
+        // Validate discount value
+        if (discountType === 'percentage' && (discountValue < 0 || discountValue > 100)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Percentage discount must be between 0 and 100'
+            });
+        }
+
+        const promoCode = new PromoCode({
+            code: code.toUpperCase(),
+            title,
+            description,
+            discountType,
+            discountValue,
+            minPurchaseAmount: minPurchaseAmount || 0,
+            maxDiscountAmount,
+            usageLimit,
+            startDate: new Date(startDate),
+            expiryDate: new Date(expiryDate),
+            applicableProducts: applicableProducts || [],
+            applicableCategories: applicableCategories || [],
+            createdBy: req.admin.username
+        });
+
+        await promoCode.save();
+
+        console.log(`✅ Promo code created: ${code}`);
+
+        res.status(201).json({
+            success: true,
+            message: 'Promo code created successfully',
+            promoCode: promoCode
+        });
+
+    } catch (error) {
+        console.error('Error creating promo code:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create promo code',
+            error: error.message
+        });
+    }
+});
+
+// Update promo code (Admin only)
+app.put('/admin/promocodes/:id', verifyAdminToken, async (req, res) => {
+    try {
+        const {
+            code,
+            title,
+            description,
+            discountType,
+            discountValue,
+            minPurchaseAmount,
+            maxDiscountAmount,
+            usageLimit,
+            isActive,
+            startDate,
+            expiryDate,
+            applicableProducts,
+            applicableCategories
+        } = req.body;
+
+        const promoCode = await PromoCode.findById(req.params.id);
+
+        if (!promoCode) {
+            return res.status(404).json({
+                success: false,
+                message: 'Promo code not found'
+            });
+        }
+
+        // Check if code is being changed and if new code already exists
+        if (code && code.toUpperCase() !== promoCode.code) {
+            const existingCode = await PromoCode.findOne({ 
+                code: code.toUpperCase(),
+                _id: { $ne: req.params.id }
+            });
+            if (existingCode) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Promo code already exists'
+                });
+            }
+            promoCode.code = code.toUpperCase();
+        }
+
+        // Validate dates if provided
+        const newStartDate = startDate ? new Date(startDate) : promoCode.startDate;
+        const newExpiryDate = expiryDate ? new Date(expiryDate) : promoCode.expiryDate;
+
+        if (newStartDate >= newExpiryDate) {
+            return res.status(400).json({
+                success: false,
+                message: 'Expiry date must be after start date'
+            });
+        }
+
+        // Validate discount value if provided
+        if (discountType === 'percentage' && discountValue && (discountValue < 0 || discountValue > 100)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Percentage discount must be between 0 and 100'
+            });
+        }
+
+        // Update fields
+        if (title) promoCode.title = title;
+        if (description !== undefined) promoCode.description = description;
+        if (discountType) promoCode.discountType = discountType;
+        if (discountValue !== undefined) promoCode.discountValue = discountValue;
+        if (minPurchaseAmount !== undefined) promoCode.minPurchaseAmount = minPurchaseAmount;
+        if (maxDiscountAmount !== undefined) promoCode.maxDiscountAmount = maxDiscountAmount;
+        if (usageLimit !== undefined) promoCode.usageLimit = usageLimit;
+        if (isActive !== undefined) promoCode.isActive = isActive;
+        if (startDate) promoCode.startDate = newStartDate;
+        if (expiryDate) promoCode.expiryDate = newExpiryDate;
+        if (applicableProducts !== undefined) promoCode.applicableProducts = applicableProducts;
+        if (applicableCategories !== undefined) promoCode.applicableCategories = applicableCategories;
+        
+        promoCode.updatedAt = Date.now();
+
+        await promoCode.save();
+
+        console.log(`✅ Promo code updated: ${promoCode.code}`);
+
+        res.json({
+            success: true,
+            message: 'Promo code updated successfully',
+            promoCode: promoCode
+        });
+
+    } catch (error) {
+        console.error('Error updating promo code:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update promo code',
+            error: error.message
+        });
+    }
+});
+
+// Toggle promo code active status (Admin only)
+app.patch('/admin/promocodes/:id/toggle', verifyAdminToken, async (req, res) => {
+    try {
+        const promoCode = await PromoCode.findById(req.params.id);
+
+        if (!promoCode) {
+            return res.status(404).json({
+                success: false,
+                message: 'Promo code not found'
+            });
+        }
+
+        promoCode.isActive = !promoCode.isActive;
+        promoCode.updatedAt = Date.now();
+
+        await promoCode.save();
+
+        console.log(`✅ Promo code ${promoCode.isActive ? 'activated' : 'deactivated'}: ${promoCode.code}`);
+
+        res.json({
+            success: true,
+            message: `Promo code ${promoCode.isActive ? 'activated' : 'deactivated'} successfully`,
+            promoCode: promoCode
+        });
+
+    } catch (error) {
+        console.error('Error toggling promo code:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to toggle promo code status'
+        });
+    }
+});
+
+// Delete promo code (Admin only)
+app.delete('/admin/promocodes/:id', verifyAdminToken, async (req, res) => {
+    try {
+        const promoCode = await PromoCode.findByIdAndDelete(req.params.id);
+
+        if (!promoCode) {
+            return res.status(404).json({
+                success: false,
+                message: 'Promo code not found'
+            });
+        }
+
+        console.log(`✅ Promo code deleted: ${promoCode.code}`);
+
+        res.json({
+            success: true,
+            message: 'Promo code deleted successfully'
+        });
+
+    } catch (error) {
+        console.error('Error deleting promo code:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete promo code'
+        });
+    }
+});
+
+// 4. PUBLIC ROUTE TO VALIDATE AND APPLY PROMO CODE
+
+// Validate promo code (Public - for checkout)
+app.post('/promocode/validate', async (req, res) => {
+    try {
+        const { code, cartAmount, productIds } = req.body;
+
+        if (!code) {
+            return res.status(400).json({
+                success: false,
+                message: 'Please provide a promo code'
+            });
+        }
+
+        const validation = await validatePromoCode(code);
+
+        if (!validation.valid) {
+            return res.status(400).json({
+                success: false,
+                message: validation.message
+            });
+        }
+
+        const promoCode = validation.promoCode;
+
+        // Check minimum purchase amount
+        if (cartAmount < promoCode.minPurchaseAmount) {
+            return res.status(400).json({
+                success: false,
+                message: `Minimum purchase amount of $${promoCode.minPurchaseAmount} required`
+            });
+        }
+
+        // Check if promo code is applicable to products
+        if (promoCode.applicableProducts.length > 0 && productIds) {
+            const hasApplicableProduct = productIds.some(id => 
+                promoCode.applicableProducts.includes(id)
+            );
+
+            if (!hasApplicableProduct) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'This promo code is not applicable to your cart items'
+                });
+            }
+        }
+
+        // Calculate discount
+        let discountAmount = 0;
+        
+        if (promoCode.discountType === 'percentage') {
+            discountAmount = (cartAmount * promoCode.discountValue) / 100;
+        } else {
+            discountAmount = promoCode.discountValue;
+        }
+
+        // Apply max discount limit if set
+        if (promoCode.maxDiscountAmount && discountAmount > promoCode.maxDiscountAmount) {
+            discountAmount = promoCode.maxDiscountAmount;
+        }
+
+        // Ensure discount doesn't exceed cart amount
+        if (discountAmount > cartAmount) {
+            discountAmount = cartAmount;
+        }
+
+        res.json({
+            success: true,
+            message: 'Promo code applied successfully',
+            promoCode: {
+                code: promoCode.code,
+                title: promoCode.title,
+                discountType: promoCode.discountType,
+                discountValue: promoCode.discountValue,
+                discountAmount: Math.round(discountAmount * 100) / 100,
+                finalAmount: Math.round((cartAmount - discountAmount) * 100) / 100
+            }
+        });
+
+    } catch (error) {
+        console.error('Error validating promo code:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to validate promo code'
+        });
+    }
+});
+
+// Apply promo code to order (Call this after order is confirmed)
+app.post('/promocode/apply/:code', async (req, res) => {
+    try {
+        const { code } = req.params;
+
+        const promoCode = await PromoCode.findOne({ code: code.toUpperCase() });
+
+        if (!promoCode) {
+            return res.status(404).json({
+                success: false,
+                message: 'Promo code not found'
+            });
+        }
+
+        // Increment usage count
+        promoCode.usedCount += 1;
+        promoCode.updatedAt = Date.now();
+
+        await promoCode.save();
+
+        console.log(`✅ Promo code used: ${code} (Total uses: ${promoCode.usedCount})`);
+
+        res.json({
+            success: true,
+            message: 'Promo code applied successfully'
+        });
+
+    } catch (error) {
+        console.error('Error applying promo code:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to apply promo code'
+        });
+    }
+});
+
+// Get promo code statistics (Admin only)
+app.get('/admin/promocodes/stats', verifyAdminToken, async (req, res) => {
+    try {
+        const now = new Date();
+
+        const stats = {
+            total: await PromoCode.countDocuments(),
+            active: await PromoCode.countDocuments({ 
+                isActive: true,
+                startDate: { $lte: now },
+                expiryDate: { $gte: now }
+            }),
+            inactive: await PromoCode.countDocuments({ isActive: false }),
+            expired: await PromoCode.countDocuments({ expiryDate: { $lt: now } }),
+            upcoming: await PromoCode.countDocuments({ startDate: { $gt: now } })
+        };
+
+        // Get most used promo codes
+        const topPromoCodes = await PromoCode.find()
+            .sort({ usedCount: -1 })
+            .limit(5)
+            .select('code title usedCount discountValue discountType');
+
+        res.json({
+            success: true,
+            stats: stats,
+            topPromoCodes: topPromoCodes
+        });
+
+    } catch (error) {
+        console.error('Error fetching promo code stats:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch statistics'
+        });
+    }
+});
+
+// Update Order Schema to include promo code
+// Add this to your existing Order schema:
+/*
+    promoCode: {
+        code: String,
+        discountAmount: Number
+    },
+*/
+
+console.log('🎟️ Professional Promo Code Management System Loaded');
+console.log('✅ Admin can create, edit, delete, toggle promo codes');
+console.log('✅ Real-time validation with expiry checks');
+console.log('✅ Usage tracking and statistics');
 // Create Payment Intent
 app.post('/payment/create-payment-intent', async (req, res) => {
     try {
