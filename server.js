@@ -869,7 +869,8 @@ app.get('/api/promo-codes/:id', async (req, res) => {
             promoCode
         });
 
-    } catch (error) {
+    } 
+    catch (error) {
         console.error('❌ Error fetching promo code:', error);
         res.status(500).json({
             success: false,
