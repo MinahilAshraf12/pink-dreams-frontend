@@ -467,32 +467,7 @@ app.get('/api/promo-codes/all', async (req, res) => {
     }
 });
 
-// 3. GET SINGLE PROMO CODE
-app.get('/api/promo-codes/:id', async (req, res) => {
-    try {
-        const promoCode = await PromoCode.findById(req.params.id);
 
-        if (!promoCode) {
-            return res.status(404).json({
-                success: false,
-                message: 'Promo code not found'
-            });
-        }
-
-        res.json({
-            success: true,
-            promoCode
-        });
-
-    } catch (error) {
-        console.error('❌ Error fetching promo code:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch promo code',
-            error: error.message
-        });
-    }
-});
 
 // 4. UPDATE PROMO CODE
 app.put('/api/promo-codes/update/:id', async (req, res) => {
@@ -877,7 +852,32 @@ app.get('/api/promo-codes/active', async (req, res) => {
         });
     }
 });
+// 3. GET SINGLE PROMO CODE
+app.get('/api/promo-codes/:id', async (req, res) => {
+    try {
+        const promoCode = await PromoCode.findById(req.params.id);
 
+        if (!promoCode) {
+            return res.status(404).json({
+                success: false,
+                message: 'Promo code not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            promoCode
+        });
+
+    } catch (error) {
+        console.error('❌ Error fetching promo code:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch promo code',
+            error: error.message
+        });
+    }
+});
 console.log('🎟️ Promo Code System API loaded successfully');
 console.log('   POST   /api/promo-codes/create - Create promo code');
 console.log('   GET    /api/promo-codes/all - Get all promo codes');
