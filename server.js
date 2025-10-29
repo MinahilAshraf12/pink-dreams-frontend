@@ -1693,7 +1693,7 @@ const createDefaultAdmin = async () => {
         if (adminCount === 0) {
             console.log('Creating default admin...');
             
-            const defaultPassword = 'admin12345';
+            const defaultPassword = 'admin123';
             const hashedPassword = await bcrypt.hash(defaultPassword, 10);
             
             const defaultAdmin = new Admin({
