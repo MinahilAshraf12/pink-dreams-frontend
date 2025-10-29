@@ -8420,6 +8420,43 @@ app.delete('/admin/orders/:orderId', async (req, res) => {
     }
 });
 
+// Admin: Delete ALL orders (use with EXTREME caution)
+app.delete('/admin/orders/delete-all/confirm', async (req, res) => {
+    try {
+        console.log('🗑️🗑️🗑️ Admin attempting to delete ALL orders');
+
+        // Get count before deletion
+        const orderCount = await Order.countDocuments();
+        
+        if (orderCount === 0) {
+            return res.json({
+                success: true,
+                message: 'No orders to delete',
+                deletedCount: 0
+            });
+        }
+
+        // Delete all orders
+        const result = await Order.deleteMany({});
+
+        console.log(`✅ Deleted ${result.deletedCount} orders from database`);
+
+        res.json({
+            success: true,
+            message: `Successfully deleted all ${result.deletedCount} orders`,
+            deletedCount: result.deletedCount
+        });
+
+    } catch (error) {
+        console.error('❌ Error deleting all orders:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete all orders',
+            error: error.message
+        });
+    }
+});
+
 console.log('📋 Admin Orders API routes loaded successfully');
 console.log('📋 Available admin order endpoints:');
 console.log('   GET    /admin/orders - Get all orders with filters');
@@ -8429,6 +8466,7 @@ console.log('   PATCH  /admin/orders/bulk-status - Bulk update order status');
 console.log('   GET    /admin/orders/:orderId - Get single order details'); 
 console.log('   PATCH  /admin/orders/:orderId/status - Update order status');
 console.log('   DELETE /admin/orders/:orderId - Delete order');
+console.log('   DELETE /admin/orders/delete-all/confirm - Delete ALL orders (DANGEROUS)');
 
 // =============================================
 // END OF ADMIN ORDERS API INTEGRATION
