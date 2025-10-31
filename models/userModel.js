@@ -1,30 +1,99 @@
-const express = require('express');
-const router = express.Router();
-const User = require('../models/userModel');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
-const passport = require('passport');
+const mongoose = require('mongoose');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-here';
+const User = mongoose.model("User", {
+    name: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    email: {
+        type: String,
+        required: true,
+        unique: true,
+        lowercase: true,
+        trim: true
+    },
+    password: {
+        type: String,
+        required: true,
+        minlength: 6
+    },
+    avatar: {
+        type: String,
+        default: ''
+    },
+    role: {
+        type: String,
+        enum: ['user', 'admin'],
+        default: 'user'
+    },
+    emailVerified: {
+        type: Boolean,
+        default: false
+    },
+    resetPasswordToken: String,
+    resetPasswordExpires: Date,
+    createdAt: {
+        type: Date,
+        default: Date.now
+    },
+    lastLogin: {
+        type: Date,
+        default: Date.now
+    },
+        // Add these OAuth fields:
+    googleId: {
+        type: String,
+        sparse: true // Allows multiple null values
+    },
+    facebookId: {
+        type: String,
+        sparse: true
+    },
+    authProvider: {
+        type: String,
+        enum: ['local', 'google', 'facebook'],
+        default: 'local'
+    },
+});
+// Add this before your existing static middleware
+app.use('/images', (req, res, next) => {
+    console.log('Image request:', req.url);
+    next();
+}, express.static(path.join(__dirname, 'upload/images')));
 
-const { loginLimiter, loginSlowDown, authLimiter, registrationLimiter, passwordResetLimiter } = require('../config/rateLimiter');
-
+// Also ensure the upload directory exists
+const fs = require('fs');
+const uploadDir = path.join(__dirname, 'upload/images');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+    console.log('Created upload directory:', uploadDir);
+}
+// Middleware to verify JWT token
 const verifyToken = (req, res, next) => {
     const token = req.header('Authorization')?.replace('Bearer ', '');
+    
     if (!token) {
-        return res.status(401).json({ success: false, message: 'Access denied. No token provided.' });
+        return res.status(401).json({
+            success: false,
+            message: 'Access denied. No token provided.'
+        });
     }
+
     try {
         const decoded = jwt.verify(token, JWT_SECRET);
         req.user = decoded;
         next();
     } catch (error) {
-        res.status(400).json({ success: false, message: 'Invalid token.' });
+        res.status(400).json({
+            success: false,
+            message: 'Invalid token.'
+        });
     }
 };
 
-router.post('/auth/register', 
+// REPLACE your existing Register endpoint
+app.post('/auth/register', 
     registrationLimiter,   // Apply registration rate limiting
     async (req, res) => {
         try {
@@ -103,7 +172,7 @@ router.post('/auth/register',
 );
 
 // REPLACE your existing Login endpoint
-router.post('/auth/login', 
+app.post('/auth/login', 
     loginLimiter,      // Apply login-specific rate limiting
     loginSlowDown,     // Apply progressive delay
     async (req, res) => {
@@ -182,7 +251,7 @@ router.post('/auth/login',
 
 
 // FIXED: Forgot Password - Send Reset Email
-router.post('/auth/forgot-password', 
+app.post('/auth/forgot-password', 
     passwordResetLimiter,  // Apply password reset rate limiting
     async (req, res) => {
         try {
@@ -395,7 +464,7 @@ router.post('/auth/forgot-password',
 // - /auth/check-email
 
 // Add a test endpoint to verify rate limiting is working
-router.get('/auth/rate-limit-status', (req, res) => {
+app.get('/auth/rate-limit-status', (req, res) => {
     res.json({
         success: true,
         message: 'Rate limiting is active',
@@ -416,7 +485,7 @@ console.log('🛡️ Rate limiting applied to auth routes');
 console.log('🛡️ Test at: GET /auth/rate-limit-status');
 
 // Get current user profile
-router.get('/auth/profile', verifyToken, async (req, res) => {
+app.get('/auth/profile', verifyToken, async (req, res) => {
     try {
         const user = await User.findById(req.user.id).select('-password');
         
@@ -451,7 +520,7 @@ router.get('/auth/profile', verifyToken, async (req, res) => {
 });
 
 // Update user profile
-router.put('/auth/profile', verifyToken, async (req, res) => {
+app.put('/auth/profile', verifyToken, async (req, res) => {
     try {
         const { name, avatar } = req.body;
         
@@ -487,7 +556,7 @@ router.put('/auth/profile', verifyToken, async (req, res) => {
 });
 
 // Change password
-router.post('/auth/change-password', verifyToken, async (req, res) => {
+app.post('/auth/change-password', verifyToken, async (req, res) => {
     try {
         const { currentPassword, newPassword } = req.body;
 
@@ -539,7 +608,7 @@ router.post('/auth/change-password', verifyToken, async (req, res) => {
 });
 
 // Logout endpoint (optional - mainly for token blacklisting if implemented)
-router.post('/auth/logout', verifyToken, async (req, res) => {
+app.post('/auth/logout', verifyToken, async (req, res) => {
     try {
         // In a real implementation, you might want to blacklist the token
         // For now, we'll just send a success response
@@ -558,7 +627,7 @@ router.post('/auth/logout', verifyToken, async (req, res) => {
 // Add this endpoint to your existing index.js file
 
 // Check if email exists (for real-time validation during registration)
-router.post('/auth/check-email', async (req, res) => {
+app.post('/auth/check-email', async (req, res) => {
     try {
         const { email } = req.body;
 
@@ -756,6 +825,313 @@ passport.use(new FacebookStrategy({
 }));
 
 // API creation
+app.get('/', (req, res) => {
+    res.send('Hello World!')
+})
 
+// Google OAuth routes
+app.get('/auth/google',
+    passport.authenticate('google', { 
+        scope: ['profile', 'email'] 
+    })
+);
 
-module.exports = router;
+app.get('/auth/google/callback',
+    passport.authenticate('google', { failureRedirect: '/login?error=google_auth_failed' }),
+    async (req, res) => {
+        try {
+            console.log('✅ Google OAuth callback successful');
+            
+            // Generate JWT token for the user
+            const token = jwt.sign(
+                { 
+                    id: req.user._id, 
+                    email: req.user.email, 
+                    role: req.user.role 
+                },
+                JWT_SECRET,
+                { expiresIn: '7d' }
+            );
+            
+            // Redirect to frontend with token
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+            res.redirect(`${frontendUrl}/auth/callback?token=${token}&provider=google&success=true`);
+        } catch (error) {
+            console.error('❌ Google OAuth callback error:', error);
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+            res.redirect(`${frontendUrl}/auth/callback?error=google_callback_failed`);
+        }
+    }
+);
+
+// Facebook OAuth routes
+app.get('/auth/facebook',
+    passport.authenticate('facebook', { 
+        scope: ['email'] 
+    })
+);
+
+app.get('/auth/facebook/callback',
+    passport.authenticate('facebook', { failureRedirect: '/login?error=facebook_auth_failed' }),
+    async (req, res) => {
+        try {
+            console.log('✅ Facebook OAuth callback successful');
+            
+            // Generate JWT token for the user
+            const token = jwt.sign(
+                { 
+                    id: req.user._id, 
+                    email: req.user.email, 
+                    role: req.user.role 
+                },
+                JWT_SECRET,
+                { expiresIn: '7d' }
+            );
+            
+            // Redirect to frontend with token
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+            res.redirect(`${frontendUrl}/auth/callback?token=${token}&provider=facebook&success=true`);
+        } catch (error) {
+            console.error('❌ Facebook OAuth callback error:', error);
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+            res.redirect(`${frontendUrl}/auth/callback?error=facebook_callback_failed`);
+        }
+    }
+);
+
+// OAuth logout route
+app.post('/auth/oauth/logout', (req, res) => {
+    req.logout((err) => {
+        if (err) {
+            return res.status(500).json({
+                success: false,
+                message: 'Error logging out'
+            });
+        }
+        
+        req.session.destroy((err) => {
+            if (err) {
+                return res.status(500).json({
+                    success: false,
+                    message: 'Error destroying session'
+                });
+            }
+            
+            res.json({
+                success: true,
+                message: 'Logged out successfully'
+            });
+        });
+    });
+});
+
+// Check OAuth link status
+app.get('/auth/oauth/status', verifyToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.id).select('googleId facebookId authProvider');
+        
+        res.json({
+            success: true,
+            oauth: {
+                hasGoogle: !!user.googleId,
+                hasFacebook: !!user.facebookId,
+                authProvider: user.authProvider,
+                canUnlink: user.authProvider === 'local' // Only allow unlinking if user has local auth
+            }
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error checking OAuth status'
+        });
+    }
+});
+
+// Link OAuth account to existing user
+app.post('/auth/oauth/link/:provider', verifyToken, async (req, res) => {
+    try {
+        const { provider } = req.params;
+        
+        if (!['google', 'facebook'].includes(provider)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid OAuth provider'
+            });
+        }
+        
+        // Store user ID in session for linking
+        req.session.linkUserId = req.user.id;
+        
+        // Redirect to OAuth provider
+        const authUrl = `/auth/${provider}?link=true`;
+        res.json({
+            success: true,
+            redirectUrl: authUrl
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error initiating OAuth link'
+        });
+    }
+});
+
+// Unlink OAuth account
+app.delete('/auth/oauth/unlink/:provider', verifyToken, async (req, res) => {
+    try {
+        const { provider } = req.params;
+        const user = await User.findById(req.user.id);
+        
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        // Don't allow unlinking if it's the only auth method
+        if (user.authProvider === provider && !user.password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Cannot unlink the only authentication method. Please set a password first.'
+            });
+        }
+        
+        // Remove OAuth ID
+        if (provider === 'google') {
+            user.googleId = undefined;
+        } else if (provider === 'facebook') {
+            user.facebookId = undefined;
+        }
+        
+        await user.save();
+        
+        res.json({
+            success: true,
+            message: `${provider.charAt(0).toUpperCase() + provider.slice(1)} account unlinked successfully`
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Error unlinking OAuth account'
+        });
+    }
+});
+
+console.log('🔐 OAuth2 routes loaded successfully');
+console.log('🔐 Available OAuth endpoints:');
+console.log('   GET  /auth/google - Initiate Google OAuth');
+console.log('   GET  /auth/google/callback - Google OAuth callback');
+console.log('   GET  /auth/facebook - Initiate Facebook OAuth');
+console.log('   GET  /auth/facebook/callback - Facebook OAuth callback');
+console.log('   POST /auth/oauth/logout - OAuth logout');
+console.log('   GET  /auth/oauth/status - Check OAuth link status');
+console.log('   POST /auth/oauth/link/:provider - Link OAuth account');
+console.log('   DELETE /auth/oauth/unlink/:provider - Unlink OAuth account');
+
+// Image storage engine
+const storage = multer.diskStorage({
+    destination: './upload/images',
+    filename: (req, file, cb) => {
+        return cb(null, `${file.fieldname}_${Date.now()}${path.extname(file.originalname)}`)
+    }
+})
+
+const upload = multer({ storage: storage })
+
+// Upload endpoint for img
+app.use('/images', express.static('upload/images'));
+
+app.post("/upload", upload.single('product'), (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: 0,
+                message: 'No file uploaded'
+            });
+        }
+
+        // Use environment variable for base URL
+        const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+        const imageUrl = `${baseUrl}/images/${req.file.filename}`;
+        
+        console.log('Image uploaded:', {
+            filename: req.file.filename,
+            path: req.file.path,
+            url: imageUrl
+        });
+
+        res.json({
+            success: 1,
+            image_url: imageUrl
+        });
+    } catch (error) {
+        console.error('Upload error:', error);
+        res.status(500).json({
+            success: 0,
+            message: 'Upload failed'
+        });
+    }
+});
+// Add this endpoint to fix existing product images
+app.post('/fix-image-urls', async (req, res) => {
+    try {
+        const baseUrl = process.env.BASE_URL || 'https://pink-dreams-store.onrender.com';
+        
+        // Update all products with localhost URLs
+        const result = await Product.updateMany(
+            { 
+                image: { $regex: 'localhost:4000' }
+            },
+            [{
+                $set: {
+                    image: {
+                        $replaceOne: {
+                            input: "$image",
+                            find: "http://localhost:4000",
+                            replacement: baseUrl
+                        }
+                    }
+                }
+            }]
+        );
+
+        // Also update images array if you have multiple images
+        const result2 = await Product.updateMany(
+            { 
+                images: { $elemMatch: { $regex: 'localhost:4000' } }
+            },
+            [{
+                $set: {
+                    images: {
+                        $map: {
+                            input: "$images",
+                            as: "img",
+                            in: {
+                                $replaceOne: {
+                                    input: "$$img",
+                                    find: "http://localhost:4000",
+                                    replacement: baseUrl
+                                }
+                            }
+                        }
+                    }
+                }
+            }]
+        );
+
+        res.json({
+            success: true,
+            message: `Updated ${result.modifiedCount} products and ${result2.modifiedCount} image arrays`,
+            baseUrl: baseUrl
+        });
+
+    } catch (error) {
+        console.error('Error fixing image URLs:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+// Enhanced Schema for creating products with all e-commerce features

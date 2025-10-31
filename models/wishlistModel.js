@@ -1,7 +1,4 @@
-const express = require('express');
-const router = express.Router();
-const Wishlist = require('../models/wishlistModel');
-const Product = require('../models/productModel');
+const mongoose = require('mongoose');
 
 const Wishlist = mongoose.model("Wishlist", {
     userId: {
@@ -32,7 +29,7 @@ const Wishlist = mongoose.model("Wishlist", {
 });
 
 // Get user's wishlist
-router.get('/wishlist/:userId', async (req, res) => {
+app.get('/wishlist/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
         console.log('Fetching wishlist for user:', userId);
@@ -101,7 +98,7 @@ router.get('/wishlist/:userId', async (req, res) => {
 });
 
 // Add item to wishlist
-router.post('/wishlist/add', async (req, res) => {
+app.post('/wishlist/add', async (req, res) => {
     try {
         const { userId, productId } = req.body;
         console.log('Adding to wishlist:', { userId, productId });
@@ -179,7 +176,7 @@ router.post('/wishlist/add', async (req, res) => {
 });
 
 // Remove item from wishlist
-router.delete('/wishlist/remove', async (req, res) => {
+app.delete('/wishlist/remove', async (req, res) => {
     try {
         const { userId, productId } = req.body;
         console.log('Removing from wishlist:', { userId, productId });
@@ -230,7 +227,7 @@ router.delete('/wishlist/remove', async (req, res) => {
 });
 
 // Clear entire wishlist
-router.delete('/wishlist/clear/:userId', async (req, res) => {
+app.delete('/wishlist/clear/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
         console.log('Clearing wishlist for user:', userId);
@@ -264,7 +261,7 @@ router.delete('/wishlist/clear/:userId', async (req, res) => {
 });
 
 // Check if item is in wishlist
-router.get('/wishlist/check/:userId/:productId', async (req, res) => {
+app.get('/wishlist/check/:userId/:productId', async (req, res) => {
     try {
         const { userId, productId } = req.params;
         
@@ -294,7 +291,7 @@ router.get('/wishlist/check/:userId/:productId', async (req, res) => {
 });
 
 // Get wishlist summary (for header badge)
-router.get('/wishlist/summary/:userId', async (req, res) => {
+app.get('/wishlist/summary/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
         
@@ -322,7 +319,7 @@ router.get('/wishlist/summary/:userId', async (req, res) => {
 });
 
 // Sync wishlist from localStorage to backend (for when user logs in)
-router.post('/wishlist/sync', async (req, res) => {
+app.post('/wishlist/sync', async (req, res) => {
     try {
         const { userId, localWishlistItems } = req.body;
         console.log('Syncing wishlist for user:', userId, 'Items:', localWishlistItems?.length || 0);
@@ -385,7 +382,7 @@ router.post('/wishlist/sync', async (req, res) => {
 });
 
 // Move items from wishlist to cart
-router.post('/wishlist/move-to-cart', async (req, res) => {
+app.post('/wishlist/move-to-cart', async (req, res) => {
     try {
         const { userId, productIds, quantity = 1 } = req.body;
         
@@ -471,7 +468,7 @@ router.post('/wishlist/move-to-cart', async (req, res) => {
 });
 
 // Get wishlist analytics for admin
-router.get('/admin/wishlist/analytics', async (req, res) => {
+app.get('/admin/wishlist/analytics', async (req, res) => {
     try {
         const totalWishlists = await Wishlist.countDocuments();
         const activeWishlists = await Wishlist.countDocuments({ 'items.0': { $exists: true } });
@@ -533,5 +530,7 @@ router.get('/admin/wishlist/analytics', async (req, res) => {
 // npm install nodemailer
 // npm install dotenv (if not already installed)
 
+const nodemailer = require('nodemailer');
+require('dotenv').config();
 
-module.exports = router;
+// Contact Form Schema

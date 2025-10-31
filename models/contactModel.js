@@ -1,12 +1,5 @@
-const express = require('express');
-const router = express.Router();
-const Contact = require('../models/contactModel');
-const nodemailer = require('nodemailer');
+const mongoose = require('mongoose');
 
-const nodemailer = require('nodemailer');
-require('dotenv').config();
-
-// Contact Form Schema
 const Contact = mongoose.model("Contact", {
     name: {
         type: String,
@@ -59,7 +52,7 @@ const Contact = mongoose.model("Contact", {
 
 
 // Replace your existing /test/email endpoint with this enhanced version
-router.post('/test/email', async (req, res) => {
+app.post('/test/email', async (req, res) => {
     try {
         const { to = 'test@example.com', subject = 'Test Email from Pink Dreams Railway' } = req.body;
         
@@ -99,7 +92,7 @@ const getClientIP = (req) => {
 };
 
 // API endpoint to handle contact form submissions
-router.post('/contact/submit', async (req, res) => {
+app.post('/contact/submit', async (req, res) => {
     try {
         const { name, email, subject, message, inquiryType } = req.body;
 
@@ -400,7 +393,7 @@ console.log('✅ Contact form endpoint updated to use Resend HTTP API');
 console.log('📧 Contact form emails will now use the same service as order confirmations');
 
 // API to get all contact submissions (for admin panel)
-router.get('/contact/submissions', async (req, res) => {
+app.get('/contact/submissions', async (req, res) => {
     try {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 10;
@@ -440,7 +433,7 @@ router.get('/contact/submissions', async (req, res) => {
 });
 
 // API to get contact submission by ID
-router.get('/contact/submission/:id', async (req, res) => {
+app.get('/contact/submission/:id', async (req, res) => {
     try {
         const submission = await Contact.findById(req.params.id);
         
@@ -470,7 +463,7 @@ router.get('/contact/submission/:id', async (req, res) => {
 });
 
 // API to update contact submission status
-router.patch('/contact/submission/:id/status', async (req, res) => {
+app.patch('/contact/submission/:id/status', async (req, res) => {
     try {
         const { status } = req.body;
         
@@ -510,7 +503,7 @@ router.patch('/contact/submission/:id/status', async (req, res) => {
 });
 
 // API to get contact statistics
-router.get('/contact/stats', async (req, res) => {
+app.get('/contact/stats', async (req, res) => {
     try {
         const totalSubmissions = await Contact.countDocuments();
         const newSubmissions = await Contact.countDocuments({ status: 'new' });
@@ -554,7 +547,7 @@ router.get('/contact/stats', async (req, res) => {
 });
 
 // API to delete contact submission
-router.delete('/contact/submission/:id', async (req, res) => {
+app.delete('/contact/submission/:id', async (req, res) => {
     try {
         const submission = await Contact.findByIdAndDelete(req.params.id);
         
@@ -580,5 +573,3 @@ router.delete('/contact/submission/:id', async (req, res) => {
 // Add these endpoints to your backend index.js file
 
 // Newsletter Schema
-
-module.exports = router;

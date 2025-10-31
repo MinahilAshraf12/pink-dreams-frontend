@@ -8679,7 +8679,82 @@ console.log('   POST /products/bulk-upload - Upload products via CSV/Excel');
 // END OF BULK PRODUCT UPLOAD API
 // =============================================
 
+// Add this code to your server.js file (after your existing multer setup around line 8510)
 
+// =============================================
+// CATEGORY IMAGE UPLOAD
+// =============================================
+
+// Create category upload directory
+const categoryUploadDir = './upload/categories';
+if (!fs.existsSync(categoryUploadDir)) {
+    fs.mkdirSync(categoryUploadDir, { recursive: true });
+    console.log('✅ Category upload directory created');
+}
+
+// Configure multer for category images
+const categoryStorage = multer.diskStorage({
+    destination: './upload/categories',
+    filename: (req, file, cb) => {
+        const uniqueName = `category_${Date.now()}${path.extname(file.originalname)}`;
+        return cb(null, uniqueName);
+    }
+});
+
+const categoryImageUpload = multer({
+    storage: categoryStorage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('Invalid file type. Only JPEG, PNG, WEBP and GIF images are allowed.'));
+        }
+    }
+});
+
+// Category Image Upload Endpoint
+app.post('/upload/category-image', categoryImageUpload.single('categoryImage'), (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'No image file uploaded'
+            });
+        }
+
+        const imageUrl = `${req.protocol}://${req.get('host')}/images/categories/${req.file.filename}`;
+        
+        console.log('✅ Category image uploaded:', req.file.filename);
+        
+        res.json({
+            success: true,
+            message: 'Category image uploaded successfully',
+            imageUrl: imageUrl,
+            filename: req.file.filename
+        });
+
+    } catch (error) {
+        console.error('❌ Category image upload error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Category image upload failed',
+            error: error.message
+        });
+    }
+});
+
+// Serve category images statically
+app.use('/images/categories', express.static('./upload/categories'));
+
+console.log('🖼️ Category Image Upload API loaded successfully');
+console.log('   POST /upload/category-image - Upload category image');
+console.log('   GET  /images/categories/:filename - Access category images');
+
+// =============================================
+// END OF CATEGORY IMAGE UPLOAD
+// =============================================
 
 
 

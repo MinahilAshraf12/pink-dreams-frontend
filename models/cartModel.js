@@ -1,7 +1,4 @@
-const express = require('express');
-const router = express.Router();
-const Cart = require('../models/cartModel');
-const Product = require('../models/productModel');
+const mongoose = require('mongoose');
 
 const Cart = mongoose.model("Cart", {
     userId: {
@@ -34,7 +31,7 @@ const Cart = mongoose.model("Cart", {
 });
 
 // Get user's cart (enhanced with better performance)
-router.get('/cart/:userId', async (req, res) => {
+app.get('/cart/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
         console.log('Fetching cart for user:', userId);
@@ -129,7 +126,7 @@ router.get('/cart/:userId', async (req, res) => {
 });
 
 // Add item to cart (enhanced with better validation)
-router.post('/cart/add', async (req, res) => {
+app.post('/cart/add', async (req, res) => {
     try {
         const { userId, productId, quantity = 1 } = req.body;
         console.log('Adding to cart:', { userId, productId, quantity });
@@ -225,7 +222,7 @@ router.post('/cart/add', async (req, res) => {
 });
 
 // Update item quantity in cart (enhanced)
-router.put('/cart/update', async (req, res) => {
+app.put('/cart/update', async (req, res) => {
     try {
         const { userId, productId, quantity } = req.body;
         console.log('Updating cart:', { userId, productId, quantity });
@@ -291,7 +288,7 @@ router.put('/cart/update', async (req, res) => {
 });
 
 // Remove item from cart (unchanged)
-router.delete('/cart/remove', async (req, res) => {
+app.delete('/cart/remove', async (req, res) => {
     try {
         const { userId, productId } = req.body;
         console.log('Removing from cart:', { userId, productId });
@@ -342,7 +339,7 @@ router.delete('/cart/remove', async (req, res) => {
 });
 
 // Clear entire cart (enhanced with better response)
-router.delete('/cart/clear/:userId', async (req, res) => {
+app.delete('/cart/clear/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
         console.log('Clearing cart for user:', userId);
@@ -378,7 +375,7 @@ router.delete('/cart/clear/:userId', async (req, res) => {
 });
 
 // Enhanced sync cart from sessionStorage to backend (for when user logs in)
-router.post('/cart/sync', async (req, res) => {
+app.post('/cart/sync', async (req, res) => {
     try {
         const { userId, localCartItems } = req.body;
         console.log('Syncing session cart for user:', userId, 'Items:', localCartItems?.length || 0);
@@ -539,7 +536,7 @@ router.post('/cart/sync', async (req, res) => {
 });
 
 // Get cart summary (for header badge) - enhanced
-router.get('/cart/summary/:userId', async (req, res) => {
+app.get('/cart/summary/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
         
@@ -572,7 +569,7 @@ router.get('/cart/summary/:userId', async (req, res) => {
     }
 });
 
-router.get('/dashboard/stats', async (req, res) => {
+app.get('/dashboard/stats', async (req, res) => {
     try {
         const totalProducts = await Product.countDocuments();
         const activeProducts = await Product.countDocuments({ available: true });
@@ -624,7 +621,7 @@ router.get('/dashboard/stats', async (req, res) => {
 })
 
 // API to simulate a sale (for testing analytics)
-router.post('/simulate-sale', async (req, res) => {
+app.post('/simulate-sale', async (req, res) => {
     try {
         const { product_id, quantity = 1 } = req.body;
         
@@ -675,7 +672,7 @@ router.post('/simulate-sale', async (req, res) => {
 });
 
 // Analytics API - Sales Overview
-router.get('/analytics/sales-overview', async (req, res) => {
+app.get('/analytics/sales-overview', async (req, res) => {
     try {
         const { period = 'monthly', year = new Date().getFullYear() } = req.query;
         
@@ -757,7 +754,7 @@ router.get('/analytics/sales-overview', async (req, res) => {
 });
 
 // Analytics API - Product Performance
-router.get('/analytics/product-performance', async (req, res) => {
+app.get('/analytics/product-performance', async (req, res) => {
     try {
         const { month, year = new Date().getFullYear() } = req.query;
         
@@ -817,7 +814,7 @@ router.get('/analytics/product-performance', async (req, res) => {
 });
 
 // Analytics API - Category Performance
-router.get('/analytics/category-performance', async (req, res) => {
+app.get('/analytics/category-performance', async (req, res) => {
     try {
         const { year = new Date().getFullYear() } = req.query;
         
@@ -849,7 +846,7 @@ router.get('/analytics/category-performance', async (req, res) => {
 });
 
 // Analytics API - Revenue Metrics
-router.get('/analytics/revenue-metrics', async (req, res) => {
+app.get('/analytics/revenue-metrics', async (req, res) => {
     try {
         const currentDate = new Date();
         const currentYear = currentDate.getFullYear();
@@ -908,7 +905,7 @@ router.get('/analytics/revenue-metrics', async (req, res) => {
 });
 
 // Generate sample sales data for testing
-router.post('/generate-sample-data', async (req, res) => {
+app.post('/generate-sample-data', async (req, res) => {
     try {
         const products = await Product.find({ available: true });
         if (products.length === 0) {
@@ -978,7 +975,7 @@ router.post('/generate-sample-data', async (req, res) => {
 });
 
 // API for inventory management
-router.get('/inventory/low-stock', async (req, res) => {
+app.get('/inventory/low-stock', async (req, res) => {
     try {
         const lowStockProducts = await Product.find({
             $expr: { $lte: ['$stock_quantity', '$low_stock_threshold'] },
@@ -998,7 +995,7 @@ router.get('/inventory/low-stock', async (req, res) => {
 });
 
 // API for updating stock quantity
-router.post('/inventory/update-stock', async (req, res) => {
+app.post('/inventory/update-stock', async (req, res) => {
     try {
         const { product_id, quantity, operation = 'set' } = req.body;
         
@@ -1037,7 +1034,7 @@ router.post('/inventory/update-stock', async (req, res) => {
 });
 
 // API for bulk operations
-router.post('/products/bulk-update', async (req, res) => {
+app.post('/products/bulk-update', async (req, res) => {
     try {
         const { product_ids, updates } = req.body;
         
@@ -1060,7 +1057,7 @@ router.post('/products/bulk-update', async (req, res) => {
 });
 
 // API for product recommendations
-router.get('/product/:id/recommendations', async (req, res) => {
+app.get('/product/:id/recommendations', async (req, res) => {
     try {
         const product = await Product.findOne({ id: parseInt(req.params.id) });
         if (!product) {
@@ -1099,7 +1096,7 @@ router.get('/product/:id/recommendations', async (req, res) => {
 });
 
 // API for SEO sitemap
-router.get('/sitemap/products', async (req, res) => {
+app.get('/sitemap/products', async (req, res) => {
     try {
         const products = await Product.find(
             { available: true, status: 'published' },
@@ -1127,5 +1124,3 @@ router.get('/sitemap/products', async (req, res) => {
 // Add these endpoints to your existing index.js file after your existing APIs
 
 // Enhanced Wishlist Schema (you already have a basic one, but this is more complete)
-
-module.exports = router;

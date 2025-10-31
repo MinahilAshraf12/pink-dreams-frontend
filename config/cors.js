@@ -1,22 +1,19 @@
-// middleware/cors.js - CORS Configuration
-const cors = require('cors');
-
 const corsOptions = {
     origin: function (origin, callback) {
         const allowedOrigins = [
             'http://localhost:3000',
             'http://localhost:3001',
-            process.env.FRONTEND_URL,
-            'https://e-commere-pink-dreams.vercel.app'
+            'https://pink-dreams-ikftech.vercel.app',
+            'https://pink-dreams-store.onrender.com',
+            process.env.FRONTEND_URL
         ].filter(Boolean);
 
-        // Allow requests with no origin (like mobile apps or Postman)
         if (!origin) return callback(null, true);
         
         if (allowedOrigins.indexOf(origin) !== -1) {
             callback(null, true);
         } else {
-            console.log('Blocked by CORS:', origin);
+            console.log('CORS blocked origin:', origin);
             callback(new Error('Not allowed by CORS'));
         }
     },
@@ -26,6 +23,4 @@ const corsOptions = {
     exposedHeaders: ['set-cookie']
 };
 
-const corsMiddleware = cors(corsOptions);
-
-module.exports = { corsMiddleware };
+module.exports = corsOptions;

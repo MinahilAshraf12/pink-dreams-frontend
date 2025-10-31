@@ -1,58 +1,216 @@
-// routes/productRoutes.js - Safe route ordering
-const express = require('express');
-const router = express.Router();
+const mongoose = require('mongoose');
 
-// Import controllers
-const productController = require('../controllers/productController');
-
-// Import middleware
-const { verifyToken, verifyAdmin } = require('../middleware/auth');
-
-// Test route
-router.get('/test', (req, res) => {
-    res.json({
-        success: true,
-        message: 'Product routes working',
-        timestamp: new Date().toISOString()
-    });
+const productSchema = new mongoose.Schema({
+    id: {
+        type: Number,
+        required: true,
+        unique: true
+    },
+    // Basic Information
+    name: {
+        type: String,
+        required: true,
+    },
+    category: {
+        type: String,
+        required: true,
+    },
+    brand: {
+        type: String,
+        default: '',
+    },
+    sku: {
+        type: String,
+        default: '',
+    },
+    description: {
+        type: String,
+        default: '',
+    },
+    short_description: {
+        type: String,
+        default: '',
+    },
+    
+    // Images
+    image: {
+        type: String,
+        required: true,
+    },
+    images: {
+        type: [String],
+        default: [],
+    },
+    
+    // Pricing
+    new_price: {
+        type: Number,
+        required: true,
+    },
+    old_price: {
+        type: Number,
+        required: true,
+    },
+    discount_type: {
+        type: String,
+        enum: ['percentage', 'fixed'],
+        default: 'percentage',
+    },
+    discount_value: {
+        type: Number,
+        default: 0,
+    },
+    sale_start_date: {
+        type: Date,
+    },
+    sale_end_date: {
+        type: Date,
+    },
+    
+    // Product Details
+    features: {
+        type: [String],
+        default: [],
+    },
+    specifications: [{
+        key: String,
+        value: String,
+    }],
+    materials: {
+        type: String,
+        default: '',
+    },
+    care_instructions: {
+        type: String,
+        default: '',
+    },
+    size_chart: {
+        type: String,
+        default: '',
+    },
+    colors: {
+        type: [String],
+        default: [],
+    },
+    sizes: {
+        type: [String],
+        default: [],
+    },
+    weight: {
+        type: Number,
+        default: 0,
+    },
+    dimensions: {
+        length: {
+            type: Number,
+            default: 0,
+        },
+        width: {
+            type: Number,
+            default: 0,
+        },
+        height: {
+            type: Number,
+            default: 0,
+        },
+    },
+    
+    // Inventory
+    stock_quantity: {
+        type: Number,
+        default: 0,
+    },
+    low_stock_threshold: {
+        type: Number,
+        default: 10,
+    },
+    
+    // SEO & Meta Data
+    meta_title: {
+        type: String,
+        default: '',
+    },
+    meta_description: {
+        type: String,
+        default: '',
+    },
+    meta_keywords: {
+        type: String,
+        default: '',
+    },
+    slug: {
+        type: String,
+        default: '',
+    },
+    
+    // Additional Fields
+    tags: {
+        type: [String],
+        default: [],
+    },
+    related_products: {
+        type: [Number],
+        default: [],
+    },
+    shipping_class: {
+        type: String,
+        enum: ['standard', 'express', 'overnight', 'free'],
+        default: 'standard',
+    },
+    status: {
+        type: String,
+        enum: ['draft', 'published', 'archived'],
+        default: 'draft',
+    },
+    
+    // System Fields
+    date: {
+        type: Date,
+        default: Date.now,
+    },
+    available: {
+        type: Boolean,
+        default: true,
+    },
+    featured: {
+        type: Boolean,
+        default: false,
+    },
+    views: {
+        type: Number,
+        default: 0,
+    },
+    sales_count: {
+        type: Number,
+        default: 0,
+    }
+}, {
+    timestamps: true // This adds createdAt and updatedAt automatically
 });
 
-// CRITICAL: All specific routes MUST come before parameterized routes
-// Static routes first
-router.get('/featured', productController.getFeaturedProducts);
-router.get('/categories', productController.getCategories);
-router.get('/filters', productController.getProductFilters);
-router.get('/product-filters', productController.getProductFilters);
-router.get('/search', productController.searchProducts);
-router.get('/allproducts', productController.getAllProducts);
-
-// Specific parameterized routes (these have specific patterns)
-router.get('/category/:category', productController.getProductsByCategory);
-router.get('/slug/:slug', productController.getProductBySlug);
-
-// Product recommendations - MOVED to use product prefix
-router.get('/product/:id/recommendations', productController.getProductRecommendations);
-
-// Admin routes (protected) - these should come before general routes too
-router.post('/add', verifyToken, verifyAdmin, productController.addProduct);
-router.post('/addproduct', verifyToken, verifyAdmin, productController.addProduct);
-router.put('/update', verifyToken, verifyAdmin, productController.updateProduct);
-router.post('/updateproduct', verifyToken, verifyAdmin, productController.updateProduct);
-router.delete('/remove', verifyToken, verifyAdmin, productController.removeProduct);
-router.post('/removeproduct', verifyToken, verifyAdmin, productController.removeProduct);
-
-// LAST: General catch-all routes
-router.get('/', productController.getAllProducts);
-router.get('/:id', productController.getProductById);
-
-// Error handling middleware
-router.use((err, req, res, next) => {
-    console.error('Product route error:', err);
-    res.status(500).json({
-        success: false,
-        message: 'Product route error',
-        error: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
-    });
+// Add virtual for conversion rate calculation
+productSchema.virtual('conversion_rate').get(function() {
+    return this.views > 0 ? ((this.sales_count / this.views) * 100).toFixed(2) : 0;
 });
 
-module.exports = router;
+// Auto-generate SKU and slug if not provided
+productSchema.pre('save', function(next) {
+    if (!this.sku || this.sku === '') {
+        this.sku = `${this.category.substring(0, 3).toUpperCase()}-${this.id}`;
+    }
+    
+    if (!this.slug || this.slug === '') {
+        this.slug = this.name.toLowerCase()
+            .replace(/[^a-z0-9 -]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/-+/g, '-')
+            .trim();
+    }
+    
+    next();
+});
+
+// Ensure virtuals are included in JSON output
+productSchema.set('toJSON', { virtuals: true });
+
+const Product = mongoose.model("Product", productSchema);

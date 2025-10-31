@@ -1,13 +1,192 @@
 const express = require('express');
 const router = express.Router();
-const Admin = require('../models/adminModel');
+const { stripe, paypalClient } = require('../config/payment');
 const Order = require('../models/orderModel');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const { verifyAdminToken } = require('../middleware/authMiddleware');
-const { sendOrderStatusEmail } = require('../utils/emailService');
+const { sendOrderConfirmationEmail } = require('../utils/emailService');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-here';
+router.post('/payment/create-payment-intent', async (req, res) => {
+    try {
+        const { amount, currency = 'usd', orderId, userId } = req.body;
+
+        console.log('Creating payment intent for:', { amount, orderId, userId });
+
+        // Validate required fields
+        if (!amount || !orderId || !userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Amount, orderId, and userId are required'
+            });
+        }
+
+        // Convert amount to cents (Stripe requires amount in smallest currency unit)
+        const amountInCents = Math.round(amount * 100);
+
+        // Create payment intent
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount: amountInCents,
+            currency: currency,
+            metadata: {
+                orderId: orderId,
+                userId: userId
+            },
+            automatic_payment_methods: {
+                enabled: true,
+            },
+        });
+
+        console.log('Payment intent created:', paymentIntent.id);
+
+        res.json({
+            success: true,
+            clientSecret: paymentIntent.client_secret,
+            paymentIntentId: paymentIntent.id
+        });
+
+    } catch (error) {
+        console.error('Payment intent creation error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create payment intent',
+            error: error.message
+        });
+    }
+});
+
+// Enhanced backend endpoints - ADD THESE TO YOUR EXISTING index.js
+
+// Enhanced Order Creation with billing address
+router.post('/order/create', async (req, res) => {
+    try {
+        const { 
+            userId, 
+            items, 
+            shippingAddress, 
+            billingAddress,
+            amount,
+            paymentIntentId,
+            paymentMethod = 'stripe'
+        } = req.body;
+
+        console.log('📦 Creating order:', { userId, itemCount: items?.length, paymentMethod });
+
+        // Generate unique order ID
+        const orderId = `ORD_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+        const order = new Order({
+            userId,
+            orderId,
+            stripePaymentIntentId: paymentIntentId,
+            items: items.map(item => ({
+                productId: item.id,
+                name: item.name,
+                price: item.price,
+                quantity: item.quantity,
+                image: item.image
+            })),
+            shippingAddress,
+            billingAddress: billingAddress || shippingAddress, // Use shipping if billing not provided
+            amount,
+            status: 'pending',
+            paymentStatus: 'pending',
+            paymentMethod
+        });
+
+        await order.save();
+        console.log('✅ Order created successfully:', orderId);
+
+        res.json({
+            success: true,
+            order: order,
+            orderId: orderId
+        });
+
+    } catch (error) {
+        console.error('❌ Order creation error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to create order',
+            error: error.message
+        });
+    }
+});
+
+// Enhanced Order Schema - UPDATE YOUR EXISTING Order SCHEMA
+const Order = mongoose.model("Order", {
+    userId: {
+        type: String,
+        required: true,
+    },
+    orderId: {
+        type: String,
+        required: true,
+        unique: true
+    },
+    stripePaymentIntentId: {
+        type: String,
+        required: true
+    },
+    items: [{
+        productId: Number,
+        name: String,
+        price: Number,
+        quantity: Number,
+        image: String
+    }],
+    shippingAddress: {
+        name: String,
+        email: String,
+        phone: String,
+        address: String,
+        city: String,
+        state: String,
+        zipCode: String,
+        country: String
+    },
+    billingAddress: {
+        name: String,
+        email: String,
+        phone: String,
+        address: String,
+        city: String,
+        state: String,
+        zipCode: String,
+        country: String
+    },
+    amount: {
+        subtotal: Number,
+        shipping: Number,
+        tax: Number,
+        discount: Number,
+        total: Number
+    },
+    status: {
+        type: String,
+        enum: ['pending', 'processing', 'shipped', 'delivered', 'cancelled'],
+        default: 'pending'
+    },
+    paymentStatus: {
+        type: String,
+        enum: ['pending', 'succeeded', 'failed', 'cancelled'],
+        default: 'pending'
+    },
+    paymentMethod: {
+        type: String,
+        enum: ['stripe', 'paypal'],
+        default: 'stripe'
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now
+    },
+    updatedAt: {
+        type: Date,
+        default: Date.now
+    }
+});
+
+console.log('💳 Enhanced checkout system loaded');
+console.log('🔵 Stripe integration ready');
+console.log('🔵 PayPal integration ready');
 
 const Admin = mongoose.model("Admin", {
     username: {

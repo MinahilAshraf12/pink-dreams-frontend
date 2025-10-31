@@ -1,13 +1,4 @@
-const express = require('express');
-const router = express.Router();
-const Admin = require('../models/adminModel');
-const Order = require('../models/orderModel');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const { verifyAdminToken } = require('../middleware/authMiddleware');
-const { sendOrderStatusEmail } = require('../utils/emailService');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-here';
+const mongoose = require('mongoose');
 
 const Admin = mongoose.model("Admin", {
     username: {
@@ -72,7 +63,7 @@ const verifyAdminToken = (req, res, next) => {
 };
 
 // Admin Login
-router.post('/admin/login', async (req, res) => {
+app.post('/admin/login', async (req, res) => {
     try {
         const { username, password } = req.body;
         
@@ -149,7 +140,7 @@ router.post('/admin/login', async (req, res) => {
 });
 
 // Get admin profile
-router.get('/admin/profile', verifyAdminToken, async (req, res) => {
+app.get('/admin/profile', verifyAdminToken, async (req, res) => {
     try {
         const admin = await Admin.findById(req.admin.id).select('-password');
         
@@ -181,7 +172,7 @@ router.get('/admin/profile', verifyAdminToken, async (req, res) => {
 });
 
 // Admin logout
-router.post('/admin/logout', verifyAdminToken, (req, res) => {
+app.post('/admin/logout', verifyAdminToken, (req, res) => {
     res.json({
         success: true,
         message: 'Admin logout successful'
@@ -231,7 +222,7 @@ console.log('   POST /admin/logout - Admin logout');
 
 
 // Update your payment confirmation to use non-blocking email
-router.post('/payment/confirm', async (req, res) => {
+app.post('/payment/confirm', async (req, res) => {
     try {
         const { paymentIntentId, orderId } = req.body;
         console.log('Processing payment confirmation for order:', orderId);
@@ -341,7 +332,7 @@ router.post('/payment/confirm', async (req, res) => {
 });
 
 // Add a separate endpoint to retry failed emails
-router.post('/admin/retry-email/:orderId', async (req, res) => {
+app.post('/admin/retry-email/:orderId', async (req, res) => {
     try {
         const { orderId } = req.params;
         const order = await Order.findOne({ orderId });
@@ -374,7 +365,7 @@ router.post('/admin/retry-email/:orderId', async (req, res) => {
 });
 
 // Get Order by ID
-router.get('/order/:orderId', async (req, res) => {
+app.get('/order/:orderId', async (req, res) => {
     try {
         const { orderId } = req.params;
         
@@ -401,7 +392,7 @@ router.get('/order/:orderId', async (req, res) => {
 });
 
 // Get User Orders
-router.get('/orders/user/:userId', async (req, res) => {
+app.get('/orders/user/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
         const page = parseInt(req.query.page) || 1;
@@ -479,7 +470,7 @@ async function getPayPalToken() {
 }
 
 // CREATE PAYPAL ORDER - This runs when user clicks PayPal button
-router.post('/payment/paypal/create-order', async (req, res) => {
+app.post('/payment/paypal/create-order', async (req, res) => {
     try {
         const { amount, orderId, userId, items } = req.body;
         
@@ -574,7 +565,7 @@ router.post('/payment/paypal/create-order', async (req, res) => {
 });
 
 // CAPTURE PAYPAL PAYMENT - This runs when PayPal payment is approved
-router.post('/payment/paypal/capture-order', async (req, res) => {
+app.post('/payment/paypal/capture-order', async (req, res) => {
     try {
         const { orderID, orderId, userId, items, shippingAddress, amount } = req.body;
 
@@ -718,7 +709,7 @@ router.post('/payment/paypal/capture-order', async (req, res) => {
 });
 
 // STRIPE PAYMENT CONFIRMATION - Debug Version
-// router.post('/payment/confirm', async (req, res) => {
+// app.post('/payment/confirm', async (req, res) => {
 //     try {
 //         const { paymentIntentId, orderId } = req.body;
 //         console.log('🔄 Processing payment confirmation for order:', orderId);
@@ -829,7 +820,7 @@ router.post('/payment/paypal/capture-order', async (req, res) => {
 // });
 
 // Test endpoint to verify PayPal connection
-router.get('/payment/paypal/test', async (req, res) => {
+app.get('/payment/paypal/test', async (req, res) => {
     try {
         const token = await getPayPalToken();
         res.json({
@@ -847,5 +838,210 @@ router.get('/payment/paypal/test', async (req, res) => {
 });
 
 // New endpoint to update order status and send email
+app.post('/order/:orderId/status', async (req, res) => {
+    try {
+        const { orderId } = req.params;
+        const { status } = req.body;
 
-module.exports = router;
+        const validStatuses = ['pending', 'processing', 'shipped', 'delivered', 'cancelled'];
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid status'
+            });
+        }
+
+        const order = await Order.findOneAndUpdate(
+            { orderId },
+            { status, updatedAt: new Date() },
+            { new: true }
+        );
+
+        if (!order) {
+            return res.status(404).json({
+                success: false,
+                message: 'Order not found'
+            });
+        }
+
+        // Send status update email
+        try {
+            await sendOrderStatusEmail(order, status);
+            console.log(`✅ Order status email sent for order: ${orderId} (${status})`);
+        } catch (emailError) {
+            console.error('❌ Status email failed:', emailError);
+        }
+
+        res.json({
+            success: true,
+            message: 'Order status updated successfully',
+            order
+        });
+
+    } catch (error) {
+        console.error('Error updating order status:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update order status'
+        });
+    }
+});
+
+console.log('🔵 PayPal integration loaded');
+console.log('🔵 PayPal Client ID:', process.env.PAYPAL_CLIENT_ID ? 'Found' : 'Missing');
+console.log('🔵 PayPal Base URL:', PAYPAL_BASE_URL);
+console.log('📧 Email service loaded and ready');
+
+
+
+// Verify Reset Token
+app.get('/auth/verify-reset-token/:token', async (req, res) => {
+    try {
+        const { token } = req.params;
+
+        if (!token) {
+            return res.status(400).json({
+                success: false,
+                message: 'Reset token is required'
+            });
+        }
+
+        // Find user with valid reset token
+        const user = await User.findOne({
+            resetPasswordToken: token,
+            resetPasswordExpires: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid or expired reset token',
+                expired: true
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Reset token is valid',
+            user: {
+                email: user.email,
+                name: user.name
+            }
+        });
+
+    } catch (error) {
+        console.error('Verify reset token error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error'
+        });
+    }
+});
+
+// Reset Password
+app.post('/auth/reset-password', async (req, res) => {
+    try {
+        const { token, newPassword } = req.body;
+
+        // Validation
+        if (!token || !newPassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'Reset token and new password are required'
+            });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: 'Password must be at least 6 characters long'
+            });
+        }
+
+        if (newPassword.length > 100) {
+            return res.status(400).json({
+                success: false,
+                message: 'Password must not exceed 100 characters'
+            });
+        }
+
+        // Find user with valid reset token
+        const user = await User.findOne({
+            resetPasswordToken: token,
+            resetPasswordExpires: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid or expired reset token',
+                expired: true
+            });
+        }
+
+        // Hash new password
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+
+        // Update user password and clear reset token
+        user.password = hashedPassword;
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpires = undefined;
+        user.lastLogin = new Date();
+        await user.save();
+
+        // Send confirmation email
+        try {
+            const transporter = createTransport();
+            
+            const mailOptions = {
+                from: process.env.EMAIL_USER,
+                to: user.email,
+                subject: 'Password Reset Successful - Pink Dreams',
+                html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                        <div style="background: linear-gradient(135deg, #10b981, #059669); color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
+                            <h2 style="margin: 0;">Password Reset Successful</h2>
+                        </div>
+                        
+                        <div style="background: white; padding: 20px; border: 1px solid #e5e7eb; border-radius: 0 0 8px 8px;">
+                            <p>Hi ${user.name},</p>
+                            <p>Your password has been successfully reset for your Pink Dreams account.</p>
+                            <p>If you didn't make this change, please contact our support team immediately.</p>
+                            <p>For security, we recommend:</p>
+                            <ul>
+                                <li>Using a unique password for your account</li>
+                                <li>Enabling two-factor authentication if available</li>
+                                <li>Not sharing your password with anyone</li>
+                            </ul>
+                            <p>Best regards,<br>The Pink Dreams Team</p>
+                            
+                            <div style="border-top: 1px solid #e5e7eb; padding-top: 15px; margin-top: 20px; font-size: 12px; color: #6b7280;">
+                                <p>Reset completed on: ${new Date().toLocaleString()}</p>
+                            </div>
+                        </div>
+                    </div>
+                `
+            };
+
+            await transporter.sendMail(mailOptions);
+        } catch (emailError) {
+            console.error('Error sending confirmation email:', emailError);
+            // Don't fail the request if confirmation email fails
+        }
+
+        res.json({
+            success: true,
+            message: 'Password reset successfully. You can now log in with your new password.'
+        });
+
+    } catch (error) {
+        console.error('Reset password error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error. Please try again.'
+        });
+    }
+});
+
+// User Schema

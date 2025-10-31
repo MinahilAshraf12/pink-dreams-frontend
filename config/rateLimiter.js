@@ -1,8 +1,6 @@
-// middleware/rateLimiter.js - Rate Limiting Configuration
 const rateLimit = require('express-rate-limit');
 const slowDown = require('express-slow-down');
 
-// Login rate limiting
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 5, // 5 login attempts per 15 minutes
@@ -14,7 +12,7 @@ const loginLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
-    skipSuccessfulRequests: true,
+    skipSuccessfulRequests: true, // Don't count successful requests
     handler: (req, res) => {
         console.log(`🚨 Login rate limit exceeded for IP: ${req.ip}, Email: ${req.body?.email}`);
         res.status(429).json({
@@ -68,7 +66,7 @@ const passwordResetLimiter = rateLimit({
     }
 });
 
-// General API rate limiting
+// General API rate limiting (optional - apply to all routes)
 const generalLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 100, // 100 requests per 15 minutes per IP
@@ -83,23 +81,11 @@ const generalLimiter = rateLimit({
     }
 });
 
-// API specific rate limiters
-const apiLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 50, // 50 requests per 15 minutes for API routes
-    message: {
-        success: false,
-        error: 'API rate limit exceeded. Please try again later.',
-        retryAfter: 15 * 60
-    }
-});
-
 module.exports = {
     loginLimiter,
     loginSlowDown,
     authLimiter,
     registrationLimiter,
     passwordResetLimiter,
-    general: generalLimiter,
-    api: apiLimiter
+    generalLimiter
 };

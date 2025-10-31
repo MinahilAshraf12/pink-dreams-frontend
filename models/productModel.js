@@ -1,4 +1,3 @@
-// models/Product.js - Product Model
 const mongoose = require('mongoose');
 
 const productSchema = new mongoose.Schema({
@@ -11,199 +10,185 @@ const productSchema = new mongoose.Schema({
     name: {
         type: String,
         required: true,
-        trim: true,
-        maxlength: 200
     },
     category: {
         type: String,
         required: true,
-        trim: true
     },
     brand: {
         type: String,
         default: '',
-        trim: true
     },
     sku: {
         type: String,
         default: '',
-        trim: true
     },
     description: {
         type: String,
         default: '',
-        maxlength: 2000
     },
     short_description: {
         type: String,
         default: '',
-        maxlength: 500
     },
     
     // Images
     image: {
         type: String,
-        required: true
+        required: true,
     },
     images: {
         type: [String],
-        default: []
+        default: [],
     },
     
     // Pricing
     new_price: {
         type: Number,
         required: true,
-        min: 0
     },
     old_price: {
         type: Number,
         required: true,
-        min: 0
     },
     discount_type: {
         type: String,
         enum: ['percentage', 'fixed'],
-        default: 'percentage'
+        default: 'percentage',
     },
     discount_value: {
         type: Number,
         default: 0,
-        min: 0
     },
-    sale_start_date: Date,
-    sale_end_date: Date,
+    sale_start_date: {
+        type: Date,
+    },
+    sale_end_date: {
+        type: Date,
+    },
     
     // Product Details
     features: {
         type: [String],
-        default: []
+        default: [],
     },
     specifications: [{
         key: String,
-        value: String
+        value: String,
     }],
     materials: {
         type: String,
-        default: ''
+        default: '',
     },
     care_instructions: {
         type: String,
-        default: ''
+        default: '',
     },
     size_chart: {
         type: String,
-        default: ''
+        default: '',
     },
     colors: {
         type: [String],
-        default: []
+        default: [],
     },
     sizes: {
         type: [String],
-        default: []
+        default: [],
     },
     weight: {
         type: Number,
         default: 0,
-        min: 0
     },
     dimensions: {
         length: {
             type: Number,
             default: 0,
-            min: 0
         },
         width: {
             type: Number,
             default: 0,
-            min: 0
         },
         height: {
             type: Number,
             default: 0,
-            min: 0
-        }
+        },
     },
     
     // Inventory
     stock_quantity: {
         type: Number,
         default: 0,
-        min: 0
     },
     low_stock_threshold: {
         type: Number,
         default: 10,
-        min: 0
     },
     
     // SEO & Meta Data
     meta_title: {
         type: String,
-        default: ''
+        default: '',
     },
     meta_description: {
         type: String,
-        default: ''
+        default: '',
     },
     meta_keywords: {
         type: String,
-        default: ''
+        default: '',
     },
     slug: {
         type: String,
-        default: ''
+        default: '',
     },
     
     // Additional Fields
     tags: {
         type: [String],
-        default: []
+        default: [],
     },
     related_products: {
         type: [Number],
-        default: []
+        default: [],
     },
     shipping_class: {
         type: String,
         enum: ['standard', 'express', 'overnight', 'free'],
-        default: 'standard'
+        default: 'standard',
     },
     status: {
         type: String,
         enum: ['draft', 'published', 'archived'],
-        default: 'draft'
+        default: 'draft',
     },
     
     // System Fields
     date: {
         type: Date,
-        default: Date.now
+        default: Date.now,
     },
     available: {
         type: Boolean,
-        default: true
+        default: true,
     },
     featured: {
         type: Boolean,
-        default: false
+        default: false,
     },
     views: {
         type: Number,
         default: 0,
-        min: 0
     },
     sales_count: {
         type: Number,
         default: 0,
-        min: 0
     }
 }, {
-    timestamps: true
+    timestamps: true // This adds createdAt and updatedAt automatically
 });
 
-// Virtual for conversion rate calculation
+// Add virtual for conversion rate calculation
 productSchema.virtual('conversion_rate').get(function() {
     return this.views > 0 ? ((this.sales_count / this.views) * 100).toFixed(2) : 0;
 });
@@ -225,16 +210,7 @@ productSchema.pre('save', function(next) {
     next();
 });
 
-// Indexes for better performance
-productSchema.index({ id: 1 });
-productSchema.index({ category: 1 });
-productSchema.index({ brand: 1 });
-productSchema.index({ status: 1, available: 1 });
-productSchema.index({ featured: 1 });
-productSchema.index({ slug: 1 });
-productSchema.index({ name: 'text', description: 'text', tags: 'text' });
-
 // Ensure virtuals are included in JSON output
 productSchema.set('toJSON', { virtuals: true });
 
-module.exports = mongoose.model('Product', productSchema);
+const Product = mongoose.model("Product", productSchema);
