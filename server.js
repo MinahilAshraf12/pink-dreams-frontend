@@ -19,6 +19,12 @@ const session = require('express-session');
 const MongoStore = require('connect-mongo');
 const rateLimit = require('express-rate-limit');
 const slowDown = require('express-slow-down');
+// ============================================
+// RBAC SYSTEM IMPORTS - Pink Dreams Store
+// ============================================
+const sqlite3 = require('sqlite3').verbose();
+const { router: rbacRouter, initRBACTables, seedDefaultRoles, createDefaultSuperAdmin } = require('./routes/rbacRoutes');
+
 
 
 // 1. FIRST: Configure trust proxy (IMPORTANT for correct IP detection)
@@ -161,7 +167,49 @@ mongoose.connect(process.env.MONGODB_URI, {
 .then(() => console.log("✅ MongoDB Connected"))
 .catch((err) => console.error("❌ MongoDB connection error:", err));
 
+// ============================================
+// SQLite Database for RBAC System
+// ============================================
+const db = new sqlite3.Database('./rbac_database.db', (err) => {
+  if (err) {
+    console.error('❌ SQLite connection error:', err);
+  } else {
+    console.log('✅ SQLite Database Connected (RBAC System)');
+  }
+});
 
+// Make database available to routes
+app.locals.db = db;
+
+// Initialize RBAC System
+(async () => {
+  try {
+    console.log('');
+    console.log('🔧 Initializing RBAC System...');
+    
+    await initRBACTables(db);
+    console.log('✅ RBAC tables initialized successfully');
+    
+    await seedDefaultRoles(db);
+    console.log('✅ Default roles seeded successfully');
+    
+    await createDefaultSuperAdmin(db);
+    console.log('✅ Default super admin created successfully');
+    
+    console.log('');
+    console.log('═══════════════════════════════════════════════════');
+    console.log('🎉 RBAC System is ready!');
+    console.log('═══════════════════════════════════════════════════');
+    console.log('📝 Default Super Admin Login:');
+    console.log('   🔑 Username: admin');
+    console.log('   🔒 Password: admin123');
+    console.log('   ⚠️  IMPORTANT: Change password after first login!');
+    console.log('═══════════════════════════════════════════════════');
+    console.log('');
+  } catch (error) {
+    console.error('❌ Error initializing RBAC system:', error);
+  }
+})();
 // Add these endpoints to your existing index.js file
 
 
@@ -7896,10 +7944,18 @@ console.log('   GET  /test/orders - Test orders system');
 // Add these after your existing Order schema and before app.listen()
 // =============================================
 
-// =============================================
-// FIXED ADMIN ORDERS API ENDPOINTS - REPLACE YOUR EXISTING ADMIN ORDER ENDPOINTS
-// ================
 
+// ============================================
+// RBAC ROUTES - Staff & Role Management
+// ============================================
+app.use('/rbac', rbacRouter);
+console.log('✅ RBAC routes mounted at /rbac/*');
+console.log('   📍 /rbac/staff/login - Staff login');
+console.log('   📍 /rbac/staff - Staff management');
+console.log('   📍 /rbac/roles - Role management');
+console.log('   📍 /rbac/permissions - View permissions');
+console.log('   📍 /rbac/activity-logs - Activity logs');
+console.log('');
 // =============================================
 // FIXED ADMIN ORDERS API ENDPOINTS - CORRECT ROUTE ORDER
 // Replace your existing admin order endpoints with this version
